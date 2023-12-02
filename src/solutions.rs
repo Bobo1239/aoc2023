@@ -48,6 +48,40 @@ pub fn day1(input: &str) -> Result<(usize, usize)> {
     Ok((sum_part1, sum_part2))
 }
 
+pub fn day2(input: &str) -> Result<(usize, usize)> {
+    let mut valid_sum = 0;
+    let mut power_sum = 0;
+    for l in input.lines() {
+        let mut parts = l.split(':');
+        let game_id: usize = parts.next().unwrap()[5..].parse()?;
+        let sets = parts.next().unwrap().split(';');
+        let mut valid = true;
+        let mut max = [0; 3];
+        for set in sets {
+            let color_cubes = set.split(',');
+            for color in color_cubes {
+                let mut parts = color.trim().split(' ');
+                let amount: usize = parts.next().unwrap().parse()?;
+                let (idx, limit) = match parts.next().unwrap() {
+                    "red" => (0, 12),
+                    "green" => (1, 13),
+                    "blue" => (2, 14),
+                    _ => unreachable!(),
+                };
+                if amount > limit {
+                    valid = false;
+                }
+                max[idx] = max[idx].max(amount);
+            }
+        }
+        if valid {
+            valid_sum += game_id
+        }
+        power_sum += max.iter().product::<usize>();
+    }
+    Ok((valid_sum, power_sum))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,6 +118,12 @@ mod tests {
         assert_eq!(execute_day_input(day1, example_part2)?.1, 281);
         assert_eq!(execute_day_input(day1, "twone\n")?.1, 21);
         assert_eq!(execute_day(1, day1, default_input)?, (54916, 54728));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day2() -> Result<()> {
+        assert_eq!(execute_day(2, day2, default_input)?, (2207, 62241));
         Ok(())
     }
 }

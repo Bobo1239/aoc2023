@@ -12,6 +12,7 @@ use solutions::*;
 fn main() -> Result<()> {
     let mut total = Duration::default();
     total += execute_day(1, day1, default_input)?;
+    total += execute_day(2, day2, default_input)?;
     println!("Total processing time: {}", format_duration(total));
     Ok(())
 }
