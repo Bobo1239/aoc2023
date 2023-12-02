@@ -40,9 +40,9 @@ fn execute_day<I: ?Sized, J: AsRef<I>, S: Display, T: Display>(
     let (part1, part2) = f(input.as_ref())?;
     let elapsed = start.elapsed();
 
-    println!("Part 1: {}", part1);
-    println!("Part 2: {}", part2);
-    println!("Finished in {}", format_duration(elapsed));
+    println!("  Part 1: {}", part1);
+    println!("  Part 2: {}", part2);
+    println!("  Finished in {}", format_duration(elapsed));
     println!("---------------------");
     Ok(elapsed)
 }
@@ -58,6 +58,7 @@ fn day1(input: &str) -> Result<(usize, usize)> {
 
     let mut sum_part1 = 0;
     let mut sum_part2 = 0;
+    // OPT: Probably faster to add "\n" as a AhoCorasick pattern
     for l in input.lines() {
         let mut first_part1 = 0;
         let mut last_part1 = 0;
