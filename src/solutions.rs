@@ -15,20 +15,17 @@ pub fn day1(input: &str) -> Result<(usize, usize)> {
     let mut sum_part1 = 0;
     let mut sum_part2 = 0;
 
-    let mut first_part1 = 0;
-    let mut last_part1 = 0;
-    let mut first_part2 = 0;
-    let mut last_part2 = 0;
+    // First/last digit
+    let mut part1 = [0, 0];
+    let mut part2 = [0, 0];
 
     for mat in ac.find_overlapping_iter(input) {
         let (digit, real_digit) = match mat.pattern().as_usize() {
             0 => {
-                sum_part1 += first_part1 * 10 + last_part1;
-                sum_part2 += first_part2 * 10 + last_part2;
-                first_part1 = 0;
-                last_part1 = 0;
-                first_part2 = 0;
-                last_part2 = 0;
+                sum_part1 += part1[0] * 10 + part1[1];
+                sum_part2 += part2[0] * 10 + part2[1];
+                part1 = [0, 0];
+                part2 = [0, 0];
                 continue;
             }
             d @ 1..=9 => (d, true),
@@ -36,16 +33,16 @@ pub fn day1(input: &str) -> Result<(usize, usize)> {
         };
 
         if real_digit {
-            if first_part1 == 0 {
-                first_part1 = digit;
+            if part1[0] == 0 {
+                part1[0] = digit;
             }
-            last_part1 = digit;
+            part1[1] = digit;
         }
 
-        if first_part2 == 0 {
-            first_part2 = digit;
+        if part2[0] == 0 {
+            part2[0] = digit;
         }
-        last_part2 = digit;
+        part2[1] = digit;
     }
 
     Ok((sum_part1, sum_part2))
