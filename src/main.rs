@@ -11,8 +11,10 @@ use solutions::*;
 
 fn main() -> Result<()> {
     let mut total = Duration::default();
-    total += execute_day(1, day1, default_input)?;
-    total += execute_day(2, day2, default_input)?;
+    let days = [day1, day2, day3];
+    for (i, day) in days.into_iter().enumerate() {
+        total += execute_day(i + 1, day, default_input)?;
+    }
     println!("Total processing time: {}", format_duration(total));
     Ok(())
 }

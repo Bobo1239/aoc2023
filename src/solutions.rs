@@ -1,5 +1,8 @@
+use std::collections::HashMap;
+
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
+use regex::Regex;
 
 pub fn day1(input: &str) -> Result<(usize, usize)> {
     // NOTE: regex doesn't work since it doesn't support overlapping matches (look-around)
@@ -80,6 +83,70 @@ pub fn day2(input: &str) -> Result<(usize, usize)> {
     Ok((valid_sum, power_sum))
 }
 
+pub fn day3(input: &str) -> Result<(usize, usize)> {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Cell {
+        Gear,
+        Other,
+        None,
+    }
+    const GRID_SIZE: usize = 140;
+
+    // NOTE: Also tried using a HashMap but this is faster
+    let mut grid = [[Cell::None; GRID_SIZE]; GRID_SIZE];
+    let re_number = Regex::new(r"(\d+)")?;
+    let re_symbol = Regex::new(r"[^\.\d\n]")?;
+
+    let mut gear_adjacents = HashMap::new();
+    for cap in re_symbol.find_iter(input) {
+        let row = cap.start() / (GRID_SIZE + 1);
+        let col = cap.start() % (GRID_SIZE + 1);
+        grid[row][col] = if cap.as_str() == "*" {
+            gear_adjacents.insert((row, col), Vec::new());
+            Cell::Gear
+        } else {
+            Cell::Other
+        };
+    }
+
+    let mut sum = 0;
+    for cap in re_number.find_iter(input) {
+        let len = cap.len();
+        let row = cap.start() / (GRID_SIZE + 1);
+        let col = cap.start() % (GRID_SIZE + 1);
+        for y in 0..3 {
+            for x in 0..(len as isize + 2) {
+                let row = row as isize - 1 + y;
+                let col = col as isize - 1 + x;
+                if row < 0 || row >= GRID_SIZE as isize || col < 0 || col >= GRID_SIZE as isize {
+                    continue;
+                }
+
+                let cell = grid[row as usize][col as usize];
+                if cell != Cell::None {
+                    let num = cap.as_str().parse::<usize>()?;
+                    sum += num;
+                    if cell == Cell::Gear {
+                        gear_adjacents
+                            .get_mut(&(row as usize, col as usize))
+                            .unwrap()
+                            .push(num);
+                    }
+                    // Apparently numbers are never adjacent to two symbols so this is fine
+                    break;
+                }
+            }
+        }
+    }
+
+    let sum_gear_ratios = gear_adjacents
+        .values()
+        .filter(|nums| nums.len() == 2)
+        .map(|nums| nums.iter().product::<usize>())
+        .sum();
+    Ok((sum, sum_gear_ratios))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,6 +189,12 @@ mod tests {
     #[test]
     fn test_day2() -> Result<()> {
         assert_eq!(execute_day(2, day2, default_input)?, (2207, 62241));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day3() -> Result<()> {
+        assert_eq!(execute_day(3, day3, default_input)?, (535351, 87287096));
         Ok(())
     }
 }
