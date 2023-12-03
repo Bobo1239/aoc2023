@@ -51,31 +51,29 @@ pub fn day1(input: &str) -> Result<(usize, usize)> {
 pub fn day2(input: &str) -> Result<(usize, usize)> {
     let mut valid_sum = 0;
     let mut power_sum = 0;
-    for l in input.lines() {
-        let mut parts = l.split(':');
-        let game_id: usize = parts.next().unwrap()[5..].parse()?;
-        let sets = parts.next().unwrap().split(';');
+    for (i, l) in input.lines().enumerate() {
+        // We don't care about the distinction between `;` and `,`
+        let amount_and_colors = l.split(':').nth(1).unwrap().split([';', ',']);
+
         let mut valid = true;
         let mut max = [0; 3];
-        for set in sets {
-            let color_cubes = set.split(',');
-            for color in color_cubes {
-                let mut parts = color.trim().split(' ');
-                let amount: usize = parts.next().unwrap().parse()?;
-                let (idx, limit) = match parts.next().unwrap() {
-                    "red" => (0, 12),
-                    "green" => (1, 13),
-                    "blue" => (2, 14),
-                    _ => unreachable!(),
-                };
-                if amount > limit {
-                    valid = false;
-                }
-                max[idx] = max[idx].max(amount);
+        for amount_and_color in amount_and_colors {
+            let mut parts = amount_and_color.trim().split(' ');
+            let amount: usize = parts.next().unwrap().parse()?;
+            let (idx, limit) = match parts.next().unwrap() {
+                "red" => (0, 12),
+                "green" => (1, 13),
+                "blue" => (2, 14),
+                _ => unreachable!(),
+            };
+            if amount > limit {
+                valid = false;
             }
+            max[idx] = max[idx].max(amount);
         }
+
         if valid {
-            valid_sum += game_id
+            valid_sum += i + 1;
         }
         power_sum += max.iter().product::<usize>();
     }
