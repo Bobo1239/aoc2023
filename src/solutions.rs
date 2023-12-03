@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+#![allow(clippy::needless_range_loop)]
 
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
-use regex::Regex;
+use regex::bytes::Regex;
 
 pub fn day1(input: &str) -> Result<(usize, usize)> {
     // NOTE: regex doesn't work since it doesn't support overlapping matches (look-around)
@@ -86,61 +86,59 @@ pub fn day2(input: &str) -> Result<(usize, usize)> {
 pub fn day3(input: &str) -> Result<(usize, usize)> {
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum Cell {
-        Gear,
+        Gear(u16), // Index into gear_adjacents
         Other,
         None,
     }
     const GRID_SIZE: usize = 140;
 
-    // NOTE: Also tried using a HashMap but this is faster
     let mut grid = [[Cell::None; GRID_SIZE]; GRID_SIZE];
-    let re_number = Regex::new(r"(\d+)")?;
-    let re_symbol = Regex::new(r"[^\.\d\n]")?;
+    let mut gear_adjacents = Vec::new();
+    let re_symbol = Regex::new(r"[^\.[0-9]\n]")?;
+    let re_number = Regex::new(r"([0-9]+)")?;
 
-    let mut gear_adjacents = HashMap::new();
-    for cap in re_symbol.find_iter(input) {
+    for cap in re_symbol.find_iter(input.as_bytes()) {
         let row = cap.start() / (GRID_SIZE + 1);
         let col = cap.start() % (GRID_SIZE + 1);
-        grid[row][col] = if cap.as_str() == "*" {
-            gear_adjacents.insert((row, col), Vec::new());
-            Cell::Gear
+        let cell = if cap.as_bytes() == b"*" {
+            gear_adjacents.push(Vec::new());
+            Cell::Gear(gear_adjacents.len() as u16 - 1)
         } else {
             Cell::Other
         };
-    }
-
-    let mut sum = 0;
-    for cap in re_number.find_iter(input) {
-        let len = cap.len();
-        let row = cap.start() / (GRID_SIZE + 1);
-        let col = cap.start() % (GRID_SIZE + 1);
-        for y in 0..3 {
-            for x in 0..(len as isize + 2) {
-                let row = row as isize - 1 + y;
-                let col = col as isize - 1 + x;
-                if row < 0 || row >= GRID_SIZE as isize || col < 0 || col >= GRID_SIZE as isize {
-                    continue;
-                }
-
-                let cell = grid[row as usize][col as usize];
-                if cell != Cell::None {
-                    let num = cap.as_str().parse::<usize>()?;
-                    sum += num;
-                    if cell == Cell::Gear {
-                        gear_adjacents
-                            .get_mut(&(row as usize, col as usize))
-                            .unwrap()
-                            .push(num);
-                    }
-                    // Apparently numbers are never adjacent to two symbols so this is fine
-                    break;
-                }
+        let row_low = if row == 0 { 0 } else { row - 1 };
+        let row_high = (row + 1).min(GRID_SIZE - 1);
+        let col_low = if col == 0 { 0 } else { col - 1 };
+        let col_high = (col + 1).min(GRID_SIZE - 1);
+        for y in row_low..=row_high {
+            for x in col_low..=col_high {
+                grid[y][x] = cell;
             }
         }
     }
 
+    let mut sum = 0;
+    for cap in re_number.find_iter(input.as_bytes()) {
+        let row = cap.start() / (GRID_SIZE + 1);
+        let col = cap.start() % (GRID_SIZE + 1);
+
+        for i in 0..cap.len() {
+            let cell = grid[row][col + i];
+            if cell == Cell::None {
+                continue;
+            }
+            let num = std::str::from_utf8(cap.as_bytes())?.parse::<usize>()?;
+            sum += num;
+            if let Cell::Gear(idx) = cell {
+                gear_adjacents[idx as usize].push(num);
+            }
+            // Apparently numbers are never adjacent to two symbols so this is fine
+            break;
+        }
+    }
+
     let sum_gear_ratios = gear_adjacents
-        .values()
+        .iter()
         .filter(|nums| nums.len() == 2)
         .map(|nums| nums.iter().product::<usize>())
         .sum();
