@@ -24,6 +24,7 @@ dependencies = [
  "aho-corasick",
  "anyhow",
  "indoc",
+ "memchr",
  "regex",
 ]
 

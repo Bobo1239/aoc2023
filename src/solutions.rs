@@ -94,25 +94,34 @@ pub fn day3(input: &str) -> Result<(usize, usize)> {
 
     let mut grid = [[Cell::None; GRID_SIZE]; GRID_SIZE];
     let mut gear_adjacents = Vec::new();
-    let re_symbol = Regex::new(r"[^\.[0-9]\n]")?;
     let re_number = Regex::new(r"([0-9]+)")?;
 
-    for cap in re_symbol.find_iter(input.as_bytes()) {
-        let row = cap.start() / (GRID_SIZE + 1);
-        let col = cap.start() % (GRID_SIZE + 1);
-        let cell = if cap.as_bytes() == b"*" {
-            gear_adjacents.push(Vec::new());
-            Cell::Gear(gear_adjacents.len() as u16 - 1)
-        } else {
-            Cell::Other
-        };
-        let row_low = if row == 0 { 0 } else { row - 1 };
-        let row_high = (row + 1).min(GRID_SIZE - 1);
-        let col_low = if col == 0 { 0 } else { col - 1 };
-        let col_high = (col + 1).min(GRID_SIZE - 1);
-        for y in row_low..=row_high {
-            for x in col_low..=col_high {
-                grid[y][x] = cell;
+    // NOTE: This is much faster than using a Regex even when going over the input multiple times
+    let patterns = [
+        [b'$', b'%'],
+        [b'*', b'='],
+        [b'/', b'+'],
+        [b'@', b'#'],
+        [b'-', b'&'],
+    ];
+    for pattern in patterns {
+        for pos in memchr::memchr2_iter(pattern[0], pattern[1], input.as_bytes()) {
+            let row = pos / (GRID_SIZE + 1);
+            let col = pos % (GRID_SIZE + 1);
+            let cell = if input.as_bytes()[pos] == b'*' {
+                gear_adjacents.push(Vec::new());
+                Cell::Gear(gear_adjacents.len() as u16 - 1)
+            } else {
+                Cell::Other
+            };
+            let row_low = if row == 0 { 0 } else { row - 1 };
+            let row_high = (row + 1).min(GRID_SIZE - 1);
+            let col_low = if col == 0 { 0 } else { col - 1 };
+            let col_high = (col + 1).min(GRID_SIZE - 1);
+            for y in row_low..=row_high {
+                for x in col_low..=col_high {
+                    grid[y][x] = cell;
+                }
             }
         }
     }
