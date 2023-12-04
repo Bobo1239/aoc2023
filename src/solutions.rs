@@ -1,7 +1,5 @@
 #![allow(clippy::needless_range_loop)]
 
-use std::str;
-
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
 use regex::bytes::Regex;
@@ -135,7 +133,7 @@ pub fn day3(input: &str) -> Result<(usize, usize)> {
             if cell == Cell::None {
                 continue;
             }
-            let num = str::from_utf8(cap.as_bytes())?.parse::<usize>()?;
+            let num = aoc2023::parse_u32_from_bytes(cap.as_bytes());
             sum += num;
             if let Cell::Gear(idx) = cell {
                 gear_adjacents[idx as usize].push(num);
@@ -167,11 +165,11 @@ pub fn day4(input: &str) -> Result<(usize, usize)> {
         let mut my = 0u128;
         let mut win = 0u128;
         for chunk in my_nums.as_bytes().chunks(3) {
-            let n: u8 = str::from_utf8(chunk)?.trim().parse()?;
+            let n = aoc2023::parse_u32_from_bytes(chunk.trim_ascii());
             my |= 1u128 << n;
         }
         for chunk in win_nums.as_bytes().chunks(3) {
-            let n: u8 = str::from_utf8(chunk)?.trim().parse()?;
+            let n = aoc2023::parse_u32_from_bytes(chunk.trim_ascii());
             win |= 1u128 << n;
         }
 
