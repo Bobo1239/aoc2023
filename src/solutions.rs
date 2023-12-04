@@ -2,6 +2,7 @@
 
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
+use aoc2023::AsciiByteSliceExt;
 use regex::bytes::Regex;
 
 pub fn day1(input: &str) -> Result<(usize, usize)> {
@@ -133,7 +134,7 @@ pub fn day3(input: &str) -> Result<(usize, usize)> {
             if cell == Cell::None {
                 continue;
             }
-            let num = aoc2023::parse_u32_from_bytes(cap.as_bytes());
+            let num = cap.as_bytes().parse_usize();
             sum += num;
             if let Cell::Gear(idx) = cell {
                 gear_adjacents[idx as usize].push(num);
@@ -158,18 +159,18 @@ pub fn day4(input: &str) -> Result<(usize, usize)> {
     let mut card_amounts = [1; 216];
     for (i, l) in input.lines().enumerate() {
         let (my_nums, win_nums) = l.split_at(offset_bar);
-        let my_nums = &my_nums[offset_colon + 2..];
-        let win_nums = &win_nums[2..];
+        let my_nums = &my_nums[offset_colon + 1..];
+        let win_nums = &win_nums[1..];
 
         // Numbers only go up to 99 so can use a u128 bitfield
         let mut my = 0u128;
         let mut win = 0u128;
         for chunk in my_nums.as_bytes().chunks(3) {
-            let n = aoc2023::parse_u32_from_bytes(chunk.trim_ascii());
+            let n = chunk.trim_start().parse_usize();
             my |= 1u128 << n;
         }
         for chunk in win_nums.as_bytes().chunks(3) {
-            let n = aoc2023::parse_u32_from_bytes(chunk.trim_ascii());
+            let n = chunk.trim_start().parse_usize();
             win |= 1u128 << n;
         }
 

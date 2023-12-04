@@ -1,5 +1,3 @@
-#![feature(byte_slice_trim_ascii)]
-
 mod solutions;
 
 use std::{
