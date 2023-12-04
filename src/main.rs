@@ -11,7 +11,7 @@ use solutions::*;
 
 fn main() -> Result<()> {
     let mut total = Duration::default();
-    let days = [day1, day2, day3];
+    let days = [day1, day2, day3, day4];
     for (i, day) in days.into_iter().enumerate() {
         total += execute_day(i + 1, day, default_input)?;
     }

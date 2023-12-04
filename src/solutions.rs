@@ -1,5 +1,7 @@
 #![allow(clippy::needless_range_loop)]
 
+use std::str;
+
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
 use regex::bytes::Regex;
@@ -133,7 +135,7 @@ pub fn day3(input: &str) -> Result<(usize, usize)> {
             if cell == Cell::None {
                 continue;
             }
-            let num = std::str::from_utf8(cap.as_bytes())?.parse::<usize>()?;
+            let num = str::from_utf8(cap.as_bytes())?.parse::<usize>()?;
             sum += num;
             if let Cell::Gear(idx) = cell {
                 gear_adjacents[idx as usize].push(num);
@@ -149,6 +151,40 @@ pub fn day3(input: &str) -> Result<(usize, usize)> {
         .map(|nums| nums.iter().product::<usize>())
         .sum();
     Ok((sum, sum_gear_ratios))
+}
+
+pub fn day4(input: &str) -> Result<(usize, usize)> {
+    let offset_colon = input.find(':').unwrap();
+    let offset_bar = input.find('|').unwrap();
+    let mut sum = 0;
+    let mut card_amounts = [1; 216];
+    for (i, l) in input.lines().enumerate() {
+        let (my_nums, win_nums) = l.split_at(offset_bar);
+        let my_nums = &my_nums[offset_colon + 2..];
+        let win_nums = &win_nums[2..];
+
+        // Numbers only go up to 99 so can use a u128 bitfield
+        let mut my = 0u128;
+        let mut win = 0u128;
+        for chunk in my_nums.as_bytes().chunks(3) {
+            let n: u8 = str::from_utf8(chunk)?.trim().parse()?;
+            my |= 1u128 << n;
+        }
+        for chunk in win_nums.as_bytes().chunks(3) {
+            let n: u8 = str::from_utf8(chunk)?.trim().parse()?;
+            win |= 1u128 << n;
+        }
+
+        let matches = (my & win).count_ones();
+        if matches > 0 {
+            sum += 1 << (matches - 1);
+            for j in i + 1..i + 1 + matches as usize {
+                card_amounts[j] += card_amounts[i];
+            }
+        }
+    }
+    let total_cards = card_amounts.iter().sum();
+    Ok((sum, total_cards))
 }
 
 #[cfg(test)]
@@ -199,6 +235,12 @@ mod tests {
     #[test]
     fn test_day3() -> Result<()> {
         assert_eq!(execute_day(3, day3, default_input)?, (535351, 87287096));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day4() -> Result<()> {
+        assert_eq!(execute_day(4, day4, default_input)?, (23941, 5571760));
         Ok(())
     }
 }
