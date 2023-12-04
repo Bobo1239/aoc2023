@@ -156,7 +156,7 @@ pub fn day4(input: &str) -> Result<(usize, usize)> {
     let offset_colon = input.find(':').unwrap();
     let offset_bar = input.find('|').unwrap();
     let mut sum = 0;
-    let mut card_amounts = [1; 216];
+    let mut card_amounts = vec![1; input.lines().count()];
     for (i, l) in input.lines().enumerate() {
         let (my_nums, win_nums) = l.split_at(offset_bar);
         let my_nums = &my_nums[offset_colon + 1..];
