@@ -1,5 +1,7 @@
 #![allow(clippy::needless_range_loop)]
 
+use std::{array, ops::Range};
+
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
 use aoc2023::AsciiByteSliceExt;
@@ -186,6 +188,86 @@ pub fn day4(input: &str) -> Result<(usize, usize)> {
     Ok((sum, total_cards))
 }
 
+pub fn day5(input: &str) -> Result<(usize, usize)> {
+    fn range_intersects(a: &Range<usize>, b: &Range<usize>) -> Option<Range<usize>> {
+        let intersection = a.start.max(b.start)..a.end.min(b.end);
+        if intersection.is_empty() {
+            None
+        } else {
+            Some(intersection)
+        }
+    }
+
+    let mut lines = input.lines();
+    let mut seeds: Vec<_> = lines.next().unwrap()[7..]
+        .split(' ')
+        .map(|s| s.as_bytes().parse_usize())
+        .collect();
+    lines.nth(1); // `advance_by()` is unstable (https://github.com/rust-lang/rust/issues/77404)
+
+    let mut seed_ranges: Vec<_> = seeds
+        .chunks(2)
+        .map(|chunk| chunk[0]..chunk[0] + chunk[1])
+        .collect();
+
+    let mut maps = Vec::new();
+    let mut current_map: Vec<[usize; 3]> = Vec::new();
+    while let Some(l) = lines.next() {
+        if l.is_empty() {
+            maps.push(current_map);
+            lines.next(); // Skip header
+            current_map = Vec::new();
+        } else {
+            let mut numbers = l.split(' ').map(|s| s.as_bytes().parse_usize());
+            current_map.push(array::from_fn(|_| numbers.next().unwrap()));
+        }
+    }
+    maps.push(current_map);
+
+    for map in &maps {
+        for seed in &mut seeds {
+            for [dst, src, len] in map {
+                if (*src..src + len).contains(seed) {
+                    *seed = dst + *seed - *src;
+                    break;
+                }
+            }
+        }
+
+        let mut new_seed_ranges = Vec::new();
+        'seed_ranges: while let Some(seed_range) = seed_ranges.pop() {
+            for [dst, src, len] in map {
+                let map_range = *src..src + len;
+                if let Some(intersection) = range_intersects(&seed_range, &map_range) {
+                    let left = seed_range.start..intersection.start;
+                    let right = intersection.end..seed_range.end;
+                    if !left.is_empty() {
+                        seed_ranges.push(left);
+                    }
+                    if !right.is_empty() {
+                        seed_ranges.push(right);
+                    }
+                    let new_start = dst + intersection.start - src;
+                    let new_end = new_start + intersection.len();
+                    new_seed_ranges.push(new_start..new_end);
+                    continue 'seed_ranges;
+                }
+            }
+            // No intersection => range stays
+            new_seed_ranges.push(seed_range);
+        }
+        seed_ranges = new_seed_ranges;
+    }
+
+    let min = seeds.into_iter().min().unwrap();
+    let min_range = seed_ranges
+        .into_iter()
+        .map(|range| range.start)
+        .min()
+        .unwrap();
+    Ok((min, min_range))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,6 +322,48 @@ mod tests {
     #[test]
     fn test_day4() -> Result<()> {
         assert_eq!(execute_day(4, day4, default_input)?, (23941, 5571760));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day5() -> Result<()> {
+        let example = indoc! {"
+            seeds: 79 14 55 13
+
+            seed-to-soil map:
+            50 98 2
+            52 50 48
+
+            soil-to-fertilizer map:
+            0 15 37
+            37 52 2
+            39 0 15
+
+            fertilizer-to-water map:
+            49 53 8
+            0 11 42
+            42 0 7
+            57 7 4
+
+            water-to-light map:
+            88 18 7
+            18 25 70
+
+            light-to-temperature map:
+            45 77 23
+            81 45 19
+            68 64 13
+
+            temperature-to-humidity map:
+            0 69 1
+            1 0 69
+
+            humidity-to-location map:
+            60 56 37
+            56 93 4
+        "};
+        assert_eq!(execute_day_input(day5, example)?, (35, 46));
+        assert_eq!(execute_day(5, day5, default_input)?, (510109797, 9622622));
         Ok(())
     }
 }
