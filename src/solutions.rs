@@ -162,17 +162,17 @@ pub fn day4(input: &str) -> Result<(usize, usize)> {
         let my_nums = &my_nums[offset_colon + 1..];
         let win_nums = &win_nums[1..];
 
-        // Numbers only go up to 99 so can use a u128 bitfield
-        let mut my = 0u128;
-        let mut win = 0u128;
-        for chunk in my_nums.as_bytes().chunks(3) {
-            let n = chunk.trim_start().parse_usize();
-            my |= 1u128 << n;
-        }
-        for chunk in win_nums.as_bytes().chunks(3) {
-            let n = chunk.trim_start().parse_usize();
-            win |= 1u128 << n;
-        }
+        // Numbers only go up to 99 so we can use a u128 bitfield
+        let my = my_nums
+            .as_bytes()
+            .chunks(3)
+            .map(|c| c.trim_start().parse_usize())
+            .fold(0u128, |acc, n| acc | 1 << n);
+        let win = win_nums
+            .as_bytes()
+            .chunks(3)
+            .map(|c| c.trim_start().parse_usize())
+            .fold(0u128, |acc, n| acc | 1 << n);
 
         let matches = (my & win).count_ones();
         if matches > 0 {
