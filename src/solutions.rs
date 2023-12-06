@@ -268,6 +268,41 @@ pub fn day5(input: &str) -> Result<(usize, usize)> {
     Ok((min, min_range))
 }
 
+pub fn day6(input: &str) -> Result<(usize, usize)> {
+    fn calculate_ways(time: usize, distance: usize) -> usize {
+        let time = time as f64;
+        let distance = distance as f64;
+        let x0 = (-time + (time * time - 4. * distance).sqrt()) / -2.;
+        let x1 = (-time - (time * time - 4. * distance).sqrt()) / -2.;
+        let x_min = x0.min(x1);
+        let x_max = x0.max(x1);
+        x_max.floor() as usize - x_min.ceil() as usize + 1
+    }
+
+    let numbers: Vec<_> = input
+        .split_ascii_whitespace()
+        .flat_map(|x| x.parse::<usize>().ok())
+        .collect();
+    let (times, distances) = numbers.split_at(numbers.len() / 2);
+    let ways_product: usize = times
+        .iter()
+        .zip(distances)
+        .map(|(time, dist)| calculate_ways(*time, *dist))
+        .product();
+
+    let numbers_combined: Vec<_> = input
+        .lines()
+        .map(|l| {
+            l.replace(|c: char| !c.is_ascii_digit(), "")
+                .parse::<usize>()
+                .unwrap()
+        })
+        .collect();
+    let ways_combined = calculate_ways(numbers_combined[0], numbers_combined[1]);
+
+    Ok((ways_product, ways_combined))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -364,6 +399,12 @@ mod tests {
         "};
         assert_eq!(execute_day_input(day5, example)?, (35, 46));
         assert_eq!(execute_day(5, day5, default_input)?, (510109797, 9622622));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day6() -> Result<()> {
+        assert_eq!(execute_day(6, day6, default_input)?, (1083852, 23501589));
         Ok(())
     }
 }
