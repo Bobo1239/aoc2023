@@ -1,6 +1,6 @@
 #![allow(clippy::needless_range_loop)]
 
-use std::{array, cmp::Ordering, ops::Range};
+use std::{array, ops::Range};
 
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
@@ -326,28 +326,6 @@ pub fn day7(input: &str) -> Result<(usize, usize)> {
         FiveOfAKind,
     }
 
-    #[derive(Debug, PartialEq, Eq)]
-    #[repr(transparent)]
-    struct JokerAware(u8);
-
-    impl PartialOrd for JokerAware {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-
-    impl Ord for JokerAware {
-        fn cmp(&self, other: &Self) -> Ordering {
-            // 9 is joker
-            match (self.0, other.0) {
-                (9, 9) => Ordering::Equal,
-                (9, _) => Ordering::Less,
-                (_, 9) => Ordering::Greater,
-                (a, b) => a.cmp(&b),
-            }
-        }
-    }
-
     fn hand_type(mut card_counts: [u8; 5], joker: u8) -> Type {
         if joker != 0 {
             if card_counts[0] == joker && card_counts[1] != joker {
@@ -427,7 +405,12 @@ pub fn day7(input: &str) -> Result<(usize, usize)> {
         .map(|(i, hand)| (i + 1) * hand.bid)
         .sum();
 
-    hands.sort_by_cached_key(|hand| (hand.hand_type_with_joker, hand.cards.map(JokerAware)));
+    hands.sort_by_cached_key(|hand| {
+        (
+            hand.hand_type_with_joker,
+            hand.cards.map(|c| if c == 9 { 0 } else { c + 1 }),
+        )
+    });
     let part2 = hands
         .iter()
         .enumerate()
