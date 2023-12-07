@@ -1,6 +1,6 @@
 #![allow(clippy::needless_range_loop)]
 
-use std::{array, ops::Range};
+use std::{array, cmp::Ordering, ops::Range};
 
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
@@ -303,6 +303,140 @@ pub fn day6(input: &str) -> Result<(usize, usize)> {
     Ok((ways_product, ways_combined))
 }
 
+pub fn day7(input: &str) -> Result<(usize, usize)> {
+    #[derive(Debug, PartialEq, Eq)]
+    struct Hand {
+        hand_type: Type,
+        hand_type_with_joker: Type,
+        cards: [u8; 5],
+        bid: usize,
+        #[cfg(debug_assertions)]
+        cards_string: String,
+    }
+
+    // Order is relevant!
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    enum Type {
+        HighCard,
+        OnePair,
+        TwoPair,
+        ThreeOfAKind,
+        FullHouse,
+        FourOfAKind,
+        FiveOfAKind,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    #[repr(transparent)]
+    struct JokerAware(u8);
+
+    impl PartialOrd for JokerAware {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for JokerAware {
+        fn cmp(&self, other: &Self) -> Ordering {
+            // 9 is joker
+            match (self.0, other.0) {
+                (9, 9) => Ordering::Equal,
+                (9, _) => Ordering::Less,
+                (_, 9) => Ordering::Greater,
+                (a, b) => a.cmp(&b),
+            }
+        }
+    }
+
+    fn hand_type(mut card_counts: [u8; 5], joker: u8) -> Type {
+        if joker != 0 {
+            if card_counts[0] == joker && card_counts[1] != joker {
+                card_counts[1] += joker;
+                card_counts[0] = 0;
+            } else {
+                card_counts[0] += joker;
+                for c in &mut card_counts {
+                    if *c == joker {
+                        *c = 0;
+                        break;
+                    }
+                }
+            }
+            card_counts.sort_unstable_by(|a, b| b.cmp(a));
+        }
+        match card_counts {
+            [5, ..] => Type::FiveOfAKind,
+            [4, ..] => Type::FourOfAKind,
+            [3, 2, ..] => Type::FullHouse,
+            [3, ..] => Type::ThreeOfAKind,
+            [2, 2, ..] => Type::TwoPair,
+            [2, ..] => Type::OnePair,
+            _ => Type::HighCard,
+        }
+    }
+
+    let mut hands = Vec::new();
+    for l in input.lines() {
+        let (cards_str, bid) = l.split_once(' ').unwrap();
+        let mut cards: [u8; 5] = cards_str.as_bytes().try_into()?;
+        cards = cards.map(|c| match c {
+            b'T' => 8,
+            b'J' => 9,
+            b'Q' => 10,
+            b'K' => 11,
+            b'A' => 12,
+            n => n - b'2',
+        });
+
+        let mut cards_sorted = cards;
+        cards_sorted.sort_unstable();
+
+        let mut card_counts = [0; 5];
+        let mut idx = 0;
+        let mut last_card = cards_sorted[0];
+        let mut joker = 0;
+        for c in cards_sorted {
+            // Joker
+            if c == 9 {
+                joker += 1;
+            }
+            if c == last_card {
+                card_counts[idx] += 1;
+            } else {
+                idx += 1;
+                card_counts[idx] += 1;
+                last_card = c;
+            }
+        }
+        card_counts.sort_unstable_by(|a, b| b.cmp(a));
+
+        hands.push(Hand {
+            hand_type: hand_type(card_counts, 0),
+            hand_type_with_joker: hand_type(card_counts, joker),
+            cards,
+            bid: bid.parse()?,
+            #[cfg(debug_assertions)]
+            cards_string: cards_str.to_string(),
+        });
+    }
+
+    hands.sort_by_cached_key(|hand| (hand.hand_type, hand.cards));
+    let part1 = hands
+        .iter()
+        .enumerate()
+        .map(|(i, hand)| (i + 1) * hand.bid)
+        .sum();
+
+    hands.sort_by_cached_key(|hand| (hand.hand_type_with_joker, hand.cards.map(JokerAware)));
+    let part2 = hands
+        .iter()
+        .enumerate()
+        .map(|(i, hand)| (i + 1) * hand.bid)
+        .sum();
+
+    Ok((part1, part2))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -405,6 +539,27 @@ mod tests {
     #[test]
     fn test_day6() -> Result<()> {
         assert_eq!(execute_day(6, day6, default_input)?, (1083852, 23501589));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day7() -> Result<()> {
+        let example = indoc! {"
+            32T3K 765
+            T55J5 684
+            KK677 28
+            KTJJT 220
+            QQQJA 483
+        "};
+        let jokers = indoc! {"
+            2222J 1
+            222JJ 10
+            JJ223 100
+            JJ234 1000
+        "};
+        assert_eq!(execute_day_input(day7, example)?, (6440, 5905));
+        assert_eq!(execute_day_input(day7, jokers)?.1, 1234);
+        assert_eq!(execute_day(7, day7, default_input)?, (241344943, 243101568));
         Ok(())
     }
 }
