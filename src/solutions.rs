@@ -1,10 +1,17 @@
 #![allow(clippy::needless_range_loop)]
 
-use std::{array, ops::Range};
+use std::{
+    array,
+    collections::HashMap,
+    ops::Range,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
 use aoc2023::AsciiByteSliceExt;
+use num::Integer;
+use rayon::prelude::*;
 use regex::bytes::Regex;
 
 pub fn day1(input: &str) -> Result<(usize, usize)> {
@@ -420,6 +427,76 @@ pub fn day7(input: &str) -> Result<(usize, usize)> {
     Ok((part1, part2))
 }
 
+pub fn day8(input: &str) -> Result<(usize, usize)> {
+    let mut lines = input.lines();
+    let directions = lines.next().unwrap().as_bytes();
+
+    let mut start_nodes = Vec::new();
+    let mut end_nodes = Vec::new();
+    let mut part1_start_end = (0, 0);
+
+    let mut node_to_idx = HashMap::new();
+    let mut node_edges = Vec::new();
+    for (node_idx, l) in lines.skip(1).enumerate() {
+        let l = l.as_bytes();
+        let node = &l[..3];
+        let left = &l[7..10];
+        let right = &l[12..15];
+        node_to_idx.insert(node, node_idx);
+        if node[2] == b'A' {
+            start_nodes.push(node_idx);
+            if node == b"AAA" {
+                part1_start_end.0 = node_idx;
+            }
+        } else if node[2] == b'Z' {
+            end_nodes.push(node_idx);
+            if node == b"ZZZ" {
+                part1_start_end.1 = node_idx;
+            }
+        }
+        node_edges.push((left, right));
+    }
+
+    let node_edges: Vec<_> = node_edges
+        .into_iter()
+        .map(|(l, r)| (node_to_idx[l], node_to_idx[r]))
+        .collect();
+
+    fn find_steps_to_goal(
+        mut start_node: usize,
+        goal: &[usize],
+        node_edges: &[(usize, usize)],
+        directions: &[u8],
+    ) -> usize {
+        let mut steps = 0;
+        for d in directions.iter().cycle() {
+            if *d == b'L' {
+                start_node = node_edges[start_node].0
+            } else {
+                start_node = node_edges[start_node].1
+            }
+            steps += 1;
+            if goal.contains(&start_node) {
+                return steps;
+            }
+        }
+        unreachable!()
+    }
+
+    let part1 = AtomicUsize::new(0);
+    let part2 = start_nodes
+        .into_par_iter()
+        .map(|start| {
+            let steps = find_steps_to_goal(start, &end_nodes, &node_edges, directions);
+            if start == part1_start_end.0 {
+                part1.store(steps, Ordering::SeqCst);
+            }
+            steps
+        })
+        .reduce(|| 1, |a: usize, b: usize| a.lcm(&b));
+    Ok((part1.load(Ordering::SeqCst), part2))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -543,6 +620,15 @@ mod tests {
         assert_eq!(execute_day_input(day7, example)?, (6440, 5905));
         assert_eq!(execute_day_input(day7, jokers)?.1, 1234);
         assert_eq!(execute_day(7, day7, default_input)?, (241344943, 243101568));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day8() -> Result<()> {
+        assert_eq!(
+            execute_day(8, day8, default_input)?,
+            (18023, 14449445933179)
+        );
         Ok(())
     }
 }

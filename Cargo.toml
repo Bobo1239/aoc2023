@@ -7,6 +7,8 @@ edition = "2021"
 aho-corasick = "1.1.2"
 anyhow = "1.0.75"
 memchr = "2.6.4"
+num = "0.4.1"
+rayon = "1.8.0"
 regex = { version = "1.10.2", default-features = false, features = ["std", "perf"] }
 
 [dev-dependencies]
