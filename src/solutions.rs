@@ -497,6 +497,41 @@ pub fn day8(input: &str) -> Result<(usize, usize)> {
     Ok((part1.load(Ordering::SeqCst), part2))
 }
 
+pub fn day9(input: &str) -> Result<(usize, usize)> {
+    fn solve_problem(numbers: &mut [isize]) -> (isize, isize) {
+        let len = numbers.len();
+        let first = numbers[0];
+        let last = numbers[len - 1];
+
+        let mut last_diff = 0;
+        let mut need_to_go_deeper = false;
+        for i in 0..numbers.len() - 1 {
+            let diff = numbers[i + 1] - numbers[i];
+            numbers[i] = diff;
+            if i != 0 && numbers[i + 1] - numbers[i] != last_diff {
+                need_to_go_deeper = true;
+            }
+            last_diff = diff;
+        }
+        let delta = if need_to_go_deeper {
+            solve_problem(&mut numbers[..len - 1])
+        } else {
+            (last_diff, last_diff)
+        };
+        (first - delta.0, last + delta.1)
+    }
+
+    let sums = input
+        .lines()
+        .map(|l| {
+            let mut numbers = l.as_bytes().split(|b| *b == b' ').map(|x| x.parse_isize());
+            let mut numbers: [isize; 21] = std::array::from_fn(|_| numbers.next().unwrap());
+            solve_problem(&mut numbers)
+        })
+        .fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+    Ok((sums.1 as usize, sums.0 as usize))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -629,6 +664,18 @@ mod tests {
             execute_day(8, day8, default_input)?,
             (18023, 14449445933179)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_day9() -> Result<()> {
+        let example = indoc! {"
+            0 3 6 9 12 15
+            1 3 6 10 15 21
+            10 13 16 21 30 45
+        "};
+        assert_eq!(execute_day_input(day9, example)?, (114, 2));
+        assert_eq!(execute_day(9, day9, default_input)?, (1938800261, 1112));
         Ok(())
     }
 }
