@@ -524,8 +524,8 @@ pub fn day9(input: &str) -> Result<(usize, usize)> {
     let sums = input
         .lines()
         .map(|l| {
-            let mut numbers = l.as_bytes().split(|b| *b == b' ').map(|x| x.parse_isize());
-            let mut numbers: [isize; 21] = std::array::from_fn(|_| numbers.next().unwrap());
+            let mut numbers = Vec::with_capacity(32);
+            numbers.extend(l.as_bytes().split(|b| *b == b' ').map(|x| x.parse_isize()));
             solve_problem(&mut numbers)
         })
         .fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
