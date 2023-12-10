@@ -532,6 +532,192 @@ pub fn day9(input: &str) -> Result<(usize, usize)> {
     Ok((sums.1 as usize, sums.0 as usize))
 }
 
+pub fn day10<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Cell {
+        Vertical,
+        Horizontal,
+        NE,
+        NW,
+        SW,
+        SE,
+        Start,
+        None,
+    }
+
+    impl Cell {
+        fn walk(self, in_dir: Direction) -> Option<Direction> {
+            Some(match in_dir {
+                Direction::North => match self {
+                    Cell::Vertical => Direction::South,
+                    Cell::NE => Direction::East,
+                    Cell::NW => Direction::West,
+                    _ => return None,
+                },
+                Direction::East => match self {
+                    Cell::Horizontal => Direction::West,
+                    Cell::NE => Direction::North,
+                    Cell::SE => Direction::South,
+                    _ => return None,
+                },
+                Direction::South => match self {
+                    Cell::Vertical => Direction::North,
+                    Cell::SE => Direction::East,
+                    Cell::SW => Direction::West,
+                    _ => return None,
+                },
+                Direction::West => match self {
+                    Cell::Horizontal => Direction::East,
+                    Cell::NW => Direction::North,
+                    Cell::SW => Direction::South,
+                    _ => return None,
+                },
+            })
+        }
+
+        fn from_out_dirs(dir0: Direction, dir1: Direction) -> Cell {
+            for cell in [
+                Cell::Vertical,
+                Cell::Horizontal,
+                Cell::NE,
+                Cell::NW,
+                Cell::SW,
+                Cell::SE,
+            ] {
+                if let Some(out_dir) = cell.walk(dir0) {
+                    if out_dir == dir1 {
+                        return cell;
+                    }
+                }
+            }
+            panic!("dir0 and dir1 mustn't be the same")
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Direction {
+        North,
+        East,
+        South,
+        West,
+    }
+
+    impl Direction {
+        const ALL: [Direction; 4] = [
+            Direction::North,
+            Direction::East,
+            Direction::South,
+            Direction::West,
+        ];
+
+        fn flip(self) -> Direction {
+            match self {
+                Direction::North => Direction::South,
+                Direction::East => Direction::West,
+                Direction::South => Direction::North,
+                Direction::West => Direction::East,
+            }
+        }
+
+        fn delta(self) -> (isize, isize) {
+            match self {
+                Direction::North => (-1, 0),
+                Direction::East => (0, 1),
+                Direction::South => (1, 0),
+                Direction::West => (0, -1),
+            }
+        }
+    }
+
+    let mut grid = [[Cell::None; GRID_SIZE]; GRID_SIZE];
+
+    let mut start = (0, 0);
+    let mut input = input.as_bytes().iter().filter(|x| **x != b'\n');
+    for y in 0..GRID_SIZE {
+        for x in 0..GRID_SIZE {
+            grid[y][x] = match input.next().unwrap() {
+                b'|' => Cell::Vertical,
+                b'-' => Cell::Horizontal,
+                b'L' => Cell::NE,
+                b'J' => Cell::NW,
+                b'7' => Cell::SW,
+                b'F' => Cell::SE,
+                b'.' => Cell::None,
+                b'S' => {
+                    start = (y as isize, x as isize);
+                    Cell::Start
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    // Determine cell type of start cell and correct its type in the grid
+    let mut current_cells = [(0, 0, Direction::North); 2];
+    let mut idx = 0;
+    for dir in Direction::ALL {
+        let delta = dir.delta();
+        let y = start.0 + delta.0;
+        let x = start.1 + delta.1;
+        if let Some(cell) = grid.get(y as usize).and_then(|r| r.get(x as usize)) {
+            if cell.walk(dir.flip()).is_some() {
+                current_cells[idx] = (start.0, start.1, dir);
+                idx += 1;
+            }
+        }
+    }
+    debug_assert_eq!(idx, 2);
+    grid[start.0 as usize][start.1 as usize] =
+        Cell::from_out_dirs(current_cells[0].2, current_cells[1].2);
+
+    let mut part_of_loop = [[false; GRID_SIZE]; GRID_SIZE];
+    part_of_loop[start.0 as usize][start.1 as usize] = true;
+
+    // Walk along both ends until the loop closes
+    let mut len = 0;
+    let mut last = (0, 0);
+    'outer: loop {
+        for (y, x, out_dir) in &mut current_cells {
+            let delta = out_dir.delta();
+            let new_y = *y + delta.0;
+            let new_x = *x + delta.1;
+            let cell = grid[new_y as usize][new_x as usize];
+            let new_out_dir = cell.walk(out_dir.flip()).unwrap();
+
+            *y = new_y;
+            *x = new_x;
+            *out_dir = new_out_dir;
+            part_of_loop[*y as usize][*x as usize] = true;
+
+            // Break if both ends reach each other
+            if new_y == last.0 && new_x == last.1 {
+                len += 1;
+                break 'outer;
+            }
+            last.0 = new_y;
+            last.1 = new_x;
+        }
+        len += 1;
+    }
+
+    // Determine cells inside loop
+    let mut count = 0;
+    for y in 0..GRID_SIZE {
+        let mut inside = false;
+        for x in 0..GRID_SIZE {
+            if part_of_loop[y][x] {
+                if matches!(grid[y][x], Cell::NE | Cell::NW | Cell::Vertical) {
+                    inside = !inside;
+                }
+            } else if inside {
+                count += 1;
+            }
+        }
+    }
+
+    Ok((len, count))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -676,6 +862,63 @@ mod tests {
         "};
         assert_eq!(execute_day_input(day9, example)?, (114, 2));
         assert_eq!(execute_day(9, day9, default_input)?, (1938800261, 1112));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day10() -> Result<()> {
+        let example1 = indoc! {"
+            .....
+            .S-7.
+            .|.|.
+            .L-J.
+            .....
+        "};
+        let example2 = indoc! {"
+            ..........
+            .S------7.
+            .|F----7|.
+            .||....||.
+            .||....||.
+            .|L-7F-J|.
+            .|..||..|.
+            .L--JL--J.
+            ..........
+            ..........
+        "};
+        let example3 = indoc! {"
+            .F----7F7F7F7F-7....
+            .|F--7||||||||FJ....
+            .||.FJ||||||||L7....
+            FJL7L7LJLJ||LJ.L-7..
+            L--J.L7...LJS7F-7L7.
+            ....F-J..F7FJ|L7L7L7
+            ....L7.F7||L7|.L7L7|
+            .....|FJLJ|FJ|F7|.LJ
+            ....FJL-7.||.||||...
+            ....L---J.LJ.LJLJ...
+        "}
+        .to_string()
+            + &(".".repeat(20) + "\n").repeat(10);
+        let example4 = indoc! {"
+            FF7FSF7F7F7F7F7F---7
+            L|LJ||||||||||||F--J
+            FL-7LJLJ||||||LJL-77
+            F--JF--7||LJLJ7F7FJ-
+            L---JF-JLJ.||-FJLJJ7
+            |F|F-JF---7F7-L7L|7|
+            |FFJF7L7F-JF7|JL---7
+            7-L-JL7||F7|L7F-7F7|
+            L.L7LFJ|||||FJL7||LJ
+            L7JLJL-JLJLJL--JLJ.L
+        "}
+        .to_string()
+            + &(".".repeat(20) + "\n").repeat(10);
+        assert_eq!(execute_day_input(day10::<5>, example1)?, (4, 1));
+        assert_eq!(execute_day_input(day10::<10>, example2)?.1, 4);
+        assert_eq!(execute_day_input(day10::<20>, &example3)?.1, 8);
+        assert_eq!(execute_day_input(day10::<20>, &example4)?.1, 10);
+        assert_eq!(execute_day(10, day10::<140>, default_input)?, (6733, 435));
         Ok(())
     }
 }

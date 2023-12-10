@@ -14,7 +14,18 @@ fn main() -> Result<()> {
     rayon::ThreadPoolBuilder::new().build_global()?;
 
     let mut total = Duration::default();
-    let days = [day1, day2, day3, day4, day5, day6, day7, day8, day9];
+    let days = [
+        day1,
+        day2,
+        day3,
+        day4,
+        day5,
+        day6,
+        day7,
+        day8,
+        day9,
+        day10::<140>,
+    ];
     for (i, day) in days.into_iter().enumerate() {
         total += execute_day(i + 1, day, default_input)?;
     }
