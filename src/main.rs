@@ -36,7 +36,7 @@ fn main() -> Result<()> {
 
 fn format_duration(dur: Duration) -> String {
     if dur.as_millis() != 0 {
-        format!("{} ms", dur.as_millis())
+        format!("{}.{:03} ms", dur.as_millis(), dur.as_micros() % 1000)
     } else {
         format!("{} us", dur.as_micros())
     }
