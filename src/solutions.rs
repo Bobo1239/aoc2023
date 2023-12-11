@@ -722,45 +722,40 @@ pub fn day11<const GRID_SIZE: usize, const PART2_FACTOR: isize>(
     input: &str,
 ) -> Result<(usize, usize)> {
     let mut galaxies = Vec::new();
-    let mut empty_rows = Vec::new();
+    let mut cluster_row = 0isize;
     let mut occupany_cols = [false; GRID_SIZE];
     for (row, l) in input.lines().enumerate() {
         let mut empty_row = true;
         for (col, b) in l.as_bytes().iter().enumerate() {
             if *b == b'#' {
-                galaxies.push((row as isize, col as isize));
+                galaxies.push(((row as isize, col as isize), (cluster_row, 0)));
                 empty_row = false;
                 occupany_cols[col] = true;
             }
         }
         if empty_row {
-            empty_rows.push(row as isize);
+            cluster_row += 1;
         }
     }
+
     let empty_cols: Vec<_> = occupany_cols
         .into_iter()
         .enumerate()
         .filter(|(_, b)| !*b)
         .map(|(col, _)| col as isize)
         .collect();
+    for ((_, col), (_, cluster_col)) in &mut galaxies {
+        *cluster_col = empty_cols.iter().take_while(|c| *col > **c).count() as isize;
+    }
 
     let mut sum = 0;
     let mut extra = 0;
     for i in 0..galaxies.len() {
         for j in i..galaxies.len() {
-            let a = galaxies[i];
-            let b = galaxies[j];
-            let range_row = a.0.min(b.0)..a.0.max(b.0);
-            let range_col = a.1.min(b.1)..a.1.max(b.1);
-            sum += (range_row.len() + range_col.len()) as isize;
-            extra += empty_rows
-                .iter()
-                .filter(|row| range_row.contains(row))
-                .count() as isize;
-            extra += empty_cols
-                .iter()
-                .filter(|col| range_col.contains(col))
-                .count() as isize;
+            let (a, cluster_a) = galaxies[i];
+            let (b, cluster_b) = galaxies[j];
+            sum += (b.0 - a.0).abs() + (b.1 - a.1).abs();
+            extra += (cluster_b.0 - cluster_a.0).abs() + (cluster_b.1 - cluster_a.1).abs();
         }
     }
 
