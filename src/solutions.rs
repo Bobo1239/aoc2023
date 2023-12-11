@@ -718,6 +718,58 @@ pub fn day10<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
     Ok((len, count))
 }
 
+pub fn day11<const GRID_SIZE: usize, const PART2_FACTOR: isize>(
+    input: &str,
+) -> Result<(usize, usize)> {
+    let mut galaxies = Vec::new();
+    let mut empty_rows = Vec::new();
+    let mut occupany_cols = [false; GRID_SIZE];
+    for (row, l) in input.lines().enumerate() {
+        let mut empty_row = true;
+        for (col, b) in l.as_bytes().iter().enumerate() {
+            if *b == b'#' {
+                galaxies.push((row as isize, col as isize));
+                empty_row = false;
+                occupany_cols[col] = true;
+            }
+        }
+        if empty_row {
+            empty_rows.push(row as isize);
+        }
+    }
+    let empty_cols: Vec<_> = occupany_cols
+        .into_iter()
+        .enumerate()
+        .filter(|(_, b)| !*b)
+        .map(|(col, _)| col as isize)
+        .collect();
+
+    let mut sum = 0;
+    let mut extra = 0;
+    for i in 0..galaxies.len() {
+        for j in i..galaxies.len() {
+            let a = galaxies[i];
+            let b = galaxies[j];
+            let range_row = a.0.min(b.0)..a.0.max(b.0);
+            let range_col = a.1.min(b.1)..a.1.max(b.1);
+            sum += (range_row.len() + range_col.len()) as isize;
+            extra += empty_rows
+                .iter()
+                .filter(|row| range_row.contains(row))
+                .count() as isize;
+            extra += empty_cols
+                .iter()
+                .filter(|col| range_col.contains(col))
+                .count() as isize;
+        }
+    }
+
+    Ok((
+        (sum + extra) as usize,
+        (sum + extra * (PART2_FACTOR - 1)) as usize,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -919,6 +971,28 @@ mod tests {
         assert_eq!(execute_day_input(day10::<20>, &example3)?.1, 8);
         assert_eq!(execute_day_input(day10::<20>, &example4)?.1, 10);
         assert_eq!(execute_day(10, day10::<140>, default_input)?, (6733, 435));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day11() -> Result<()> {
+        let example = indoc! {"
+            ...#......
+            .......#..
+            #.........
+            ..........
+            ......#...
+            .#........
+            .........#
+            ..........
+            .......#..
+            #...#.....
+        "};
+        assert_eq!(execute_day_input(day11::<10, 100>, example)?, (374, 8410));
+        assert_eq!(
+            execute_day(11, day11::<140, 1000000>, default_input)?,
+            (9233514, 363293506944)
+        );
         Ok(())
     }
 }
