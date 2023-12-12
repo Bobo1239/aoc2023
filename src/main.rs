@@ -26,6 +26,7 @@ fn main() -> Result<()> {
         day9,
         day10::<140>,
         day11::<140, 1000000>,
+        day12,
     ];
     for (i, day) in days.into_iter().enumerate() {
         total += execute_day(i + 1, day, default_input)?;

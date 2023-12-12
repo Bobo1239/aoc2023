@@ -765,6 +765,163 @@ pub fn day11<const GRID_SIZE: usize, const PART2_FACTOR: isize>(
     ))
 }
 
+pub fn day12(input: &str) -> Result<(usize, usize)> {
+    // TODO: remove
+    fn debug(state: &[Spring]) -> String {
+        state
+            .iter()
+            .map(|s| match s {
+                Spring::Operational => '.',
+                Spring::Damaged => '#',
+                Spring::Unknown => '?',
+            })
+            .collect()
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    enum Spring {
+        Operational,
+        Damaged,
+        Unknown,
+    }
+
+    fn solve(
+        state: &mut [Spring],
+        chunks: &[u8],
+        cache: &mut HashMap<(Vec<Spring>, Vec<u8>), usize>,
+    ) -> usize {
+        // println!("\n{} {:?}", debug(state), chunks);
+
+        // TODO: Remove allocations everywhere...
+        if let Some(cached) = cache.get(&(state.to_vec(), chunks.to_vec())) {
+            return *cached;
+        }
+
+        let mut ret = 0;
+        let first_unknown = state
+            .iter()
+            .enumerate()
+            .find(|(_, x)| **x == Spring::Unknown);
+        if let Some((unknown_idx, _)) = first_unknown {
+            for try_spring in [Spring::Operational, Spring::Damaged] {
+                state[unknown_idx] = try_spring;
+
+                let mut counts = Vec::new();
+                let mut count = None;
+                let mut end = 0;
+                let mut used_break = false;
+                for (i, s) in state.iter().enumerate() {
+                    match s {
+                        Spring::Operational => {
+                            if let Some(count) = count.take() {
+                                counts.push(count);
+                                end = i;
+                            }
+                        }
+                        Spring::Damaged => {
+                            if let Some(count) = &mut count {
+                                *count += 1;
+                            } else {
+                                count = Some(1);
+                            }
+                        }
+                        Spring::Unknown => {
+                            used_break = true;
+                            break;
+                        }
+                    }
+                }
+                if !used_break {
+                    if let Some(count) = count {
+                        counts.push(count);
+                        end = state.len();
+                    }
+                }
+
+                // println!("{} {:?}", debug(state), counts);
+                if chunks.starts_with(&counts) {
+                    // println!("->");
+                    ret += solve(&mut state[end..], &chunks[counts.len()..], cache);
+                }
+                state[unknown_idx] = Spring::Unknown;
+            }
+            cache.insert((state.to_vec(), chunks.to_vec()), ret);
+            ret
+        } else {
+            let mut counts = Vec::new();
+            let mut count = None;
+            for s in state.iter() {
+                match s {
+                    Spring::Operational => {
+                        if let Some(count) = count.take() {
+                            counts.push(count);
+                        }
+                    }
+                    Spring::Damaged => {
+                        if let Some(count) = &mut count {
+                            *count += 1;
+                        } else {
+                            count = Some(1);
+                        }
+                    }
+                    Spring::Unknown => unreachable!(),
+                }
+            }
+            if let Some(count) = count {
+                counts.push(count);
+            }
+            if counts == chunks {
+                cache.insert((state.to_vec(), chunks.to_vec()), 1);
+                1
+            } else {
+                cache.insert((state.to_vec(), chunks.to_vec()), 0);
+                0
+            }
+        }
+    }
+
+    let mut sum1 = 0;
+    let mut sum2 = 0;
+    for l in input.lines() {
+        let mut parts = l.as_bytes().split(|b| *b == b' ');
+        let mut state = Vec::with_capacity(20);
+        for b in parts.next().unwrap() {
+            state.push(match b {
+                b'.' => Spring::Operational,
+                b'#' => Spring::Damaged,
+                b'?' => Spring::Unknown,
+                _ => unreachable!(),
+            });
+        }
+        let chunks: Vec<_> = parts
+            .next()
+            .unwrap()
+            .split(|b| *b == b',')
+            .map(|x| x.parse_usize() as u8)
+            .collect();
+
+        // println!("{} {:?}", debug(&state), chunks);
+        let mut state2: Vec<_> = state
+            .iter()
+            .copied()
+            .chain(std::iter::once(Spring::Unknown))
+            .cycle()
+            .take(state.len() * 5 + 4)
+            .collect();
+        let chunks2: Vec<_> = chunks
+            .iter()
+            .copied()
+            .cycle()
+            .take(chunks.len() * 5)
+            .collect();
+        let mut cache = HashMap::new();
+        sum1 += solve(&mut state, &chunks, &mut cache);
+        sum2 += solve(&mut state2, &chunks2, &mut cache);
+    }
+
+    Ok((sum1, sum2))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -987,6 +1144,31 @@ mod tests {
         assert_eq!(
             execute_day(11, day11::<140, 1000000>, default_input)?,
             (9233514, 363293506944)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_day12() -> Result<()> {
+        let examples = [
+            ("? 1", (1, 1)),
+            ("# 1", (1, 1)),
+            (". 1", (0, 0)),
+            (".??..??...?##. 1,1,3", (4, 16384)),
+            ("?#?#?#?#?#?#?#? 1,3,1,6", (1, 1)),
+            ("????.#...#... 4,1,1", (1, 16)),
+            ("????.######..#####. 1,6,5", (4, 2500)),
+            ("?###???????? 3,2,1", (10, 506250)),
+            ("?????.??##????????? 2,6,2", (48, 3011657374)),
+        ];
+        for (example, expected) in examples {
+            println!("-----------");
+            println!("Example: {}", example);
+            assert_eq!(execute_day_input(day12, example)?, expected);
+        }
+        assert_eq!(
+            execute_day(12, day12, default_input)?,
+            (7674, 4443895258186)
         );
         Ok(())
     }
