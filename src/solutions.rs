@@ -2,9 +2,11 @@
 
 use std::{
     array,
+    cmp::Ordering,
     collections::HashMap,
+    iter,
     ops::Range,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::atomic::{self, AtomicUsize},
 };
 
 use aho_corasick::AhoCorasick;
@@ -489,12 +491,12 @@ pub fn day8(input: &str) -> Result<(usize, usize)> {
         .map(|start| {
             let steps = find_steps_to_goal(start, &end_nodes, &node_edges, directions);
             if start == part1_start_end.0 {
-                part1.store(steps, Ordering::SeqCst);
+                part1.store(steps, atomic::Ordering::SeqCst);
             }
             steps
         })
         .reduce(|| 1, |a: usize, b: usize| a.lcm(&b));
-    Ok((part1.load(Ordering::SeqCst), part2))
+    Ok((part1.load(atomic::Ordering::SeqCst), part2))
 }
 
 pub fn day9(input: &str) -> Result<(usize, usize)> {
@@ -766,158 +768,176 @@ pub fn day11<const GRID_SIZE: usize, const PART2_FACTOR: isize>(
 }
 
 pub fn day12(input: &str) -> Result<(usize, usize)> {
-    // TODO: remove
-    fn debug(state: &[Spring]) -> String {
-        state
-            .iter()
-            .map(|s| match s {
-                Spring::Operational => '.',
-                Spring::Damaged => '#',
-                Spring::Unknown => '?',
-            })
-            .collect()
-    }
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    enum Spring {
-        Operational,
-        Damaged,
-        Unknown,
-    }
-
-    fn solve(
-        state: &mut [Spring],
-        chunks: &[u8],
-        cache: &mut HashMap<(Vec<Spring>, Vec<u8>), usize>,
+    fn solve_wrapper(
+        state: &mut [u8],
+        chunks: &mut [u8],
+        cache: &mut HashMap<(Vec<u8>, Vec<u8>), usize>,
     ) -> usize {
-        // println!("\n{} {:?}", debug(state), chunks);
-
-        // TODO: Remove allocations everywhere...
+        // TODO: Remove allocations everywhere... (custom hash? other repr?)
         if let Some(cached) = cache.get(&(state.to_vec(), chunks.to_vec())) {
             return *cached;
         }
+        // let prev = (state.to_vec(), chunks.to_vec());
+        let ret = solve(state, chunks, cache);
+        // assert_eq!(prev, (state.to_vec(), chunks.to_vec()));
+        // println!("{} {:?} ret: {}", std::str::from_utf8(state).unwrap(), chunks, ret);
+        cache.insert((state.to_vec(), chunks.to_vec()), ret);
+        ret
+    }
+
+    fn solve(
+        mut state: &mut [u8],
+        mut chunks: &mut [u8],
+        cache: &mut HashMap<(Vec<u8>, Vec<u8>), usize>,
+    ) -> usize {
+        if state.is_empty() && chunks.is_empty() {
+            return 1;
+        }
+
+        // Remove fixed prefix
+        let mut count = None;
+        while let Some(s) = state.first() {
+            match s {
+                b'.' => {
+                    if let Some(count) = count.take() {
+                        if chunks.is_empty() {
+                            return 0;
+                        }
+                        if chunks[0] == count {
+                            chunks = &mut chunks[1..];
+                        } else {
+                            return 0;
+                        }
+                    }
+                }
+                b'#' => {
+                    if let Some(count) = &mut count {
+                        *count += 1;
+                    } else {
+                        count = Some(1);
+                    }
+                }
+                b'?' => {
+                    break;
+                }
+                _ => unreachable!(),
+            }
+            state = &mut state[1..];
+        }
+        let mut current_chunk_progress = 0;
+        if let Some(count) = count {
+            if chunks.is_empty() {
+                return 0;
+            }
+            match count.cmp(&chunks[0]) {
+                Ordering::Greater => return 0,
+                Ordering::Less => current_chunk_progress = count,
+                Ordering::Equal => {
+                    if state.is_empty() {
+                        if chunks[1..].is_empty() {
+                            return 1;
+                        } else {
+                            return 0;
+                        };
+                    } else {
+                        // We've finished this chunk which means the unknown must be `State::Operational`
+                        return solve_wrapper(&mut state[1..], &mut chunks[1..], cache);
+                    }
+                }
+            }
+        }
+
+        if chunks.is_empty() {
+            if state.iter().all(|s| *s != b'#') {
+                return 1;
+            } else {
+                return 0;
+            }
+        } else if state.is_empty() {
+            return 0;
+        } else if current_chunk_progress > 0 {
+            let remaining = (chunks[0] - current_chunk_progress) as usize;
+            if state.len() < remaining {
+                return 0;
+            } else if state.iter().take(remaining).all(|x| *x != b'.') {
+                if state.len() == remaining {
+                    if chunks[1..].is_empty() {
+                        return 1;
+                    } else {
+                        return 0;
+                    }
+                } else {
+                    match state[remaining] {
+                        b'#' => return 0, // Overshoot
+                        _ => {
+                            // If it's `?` then it must become `.`
+                            return solve_wrapper(
+                                &mut state[remaining + 1..],
+                                &mut chunks[1..],
+                                cache,
+                            );
+                        }
+                    }
+                }
+            } else {
+                // There was something unterrupting our chunk
+                return 0;
+            }
+        }
 
         let mut ret = 0;
-        let first_unknown = state
-            .iter()
-            .enumerate()
-            .find(|(_, x)| **x == Spring::Unknown);
-        if let Some((unknown_idx, _)) = first_unknown {
-            for try_spring in [Spring::Operational, Spring::Damaged] {
-                state[unknown_idx] = try_spring;
+        chunks[0] -= current_chunk_progress;
+        debug_assert_ne!(chunks[0], 0);
 
-                let mut counts = Vec::new();
-                let mut count = None;
-                let mut end = 0;
-                let mut used_break = false;
-                for (i, s) in state.iter().enumerate() {
-                    match s {
-                        Spring::Operational => {
-                            if let Some(count) = count.take() {
-                                counts.push(count);
-                                end = i;
-                            }
-                        }
-                        Spring::Damaged => {
-                            if let Some(count) = &mut count {
-                                *count += 1;
-                            } else {
-                                count = Some(1);
-                            }
-                        }
-                        Spring::Unknown => {
-                            used_break = true;
-                            break;
-                        }
-                    }
-                }
-                if !used_break {
-                    if let Some(count) = count {
-                        counts.push(count);
-                        end = state.len();
-                    }
-                }
-
-                // println!("{} {:?}", debug(state), counts);
-                if chunks.starts_with(&counts) {
-                    // println!("->");
-                    ret += solve(&mut state[end..], &chunks[counts.len()..], cache);
-                }
-                state[unknown_idx] = Spring::Unknown;
-            }
-            cache.insert((state.to_vec(), chunks.to_vec()), ret);
-            ret
-        } else {
-            let mut counts = Vec::new();
-            let mut count = None;
-            for s in state.iter() {
-                match s {
-                    Spring::Operational => {
-                        if let Some(count) = count.take() {
-                            counts.push(count);
-                        }
-                    }
-                    Spring::Damaged => {
-                        if let Some(count) = &mut count {
-                            *count += 1;
-                        } else {
-                            count = Some(1);
-                        }
-                    }
-                    Spring::Unknown => unreachable!(),
-                }
-            }
-            if let Some(count) = count {
-                counts.push(count);
-            }
-            if counts == chunks {
-                cache.insert((state.to_vec(), chunks.to_vec()), 1);
-                1
-            } else {
-                cache.insert((state.to_vec(), chunks.to_vec()), 0);
-                0
-            }
+        // Only try `.` if we're not currently in the middle of a chunk
+        if current_chunk_progress == 0 {
+            state[0] = b'.';
+            ret += solve_wrapper(state, chunks, cache);
         }
+        state[0] = b'#';
+        ret += solve_wrapper(state, chunks, cache);
+
+        // Reset modifications
+        state[0] = b'?';
+        chunks[0] += current_chunk_progress;
+        ret
     }
 
-    let mut sum1 = 0;
-    let mut sum2 = 0;
-    for l in input.lines() {
-        let mut parts = l.as_bytes().split(|b| *b == b' ');
-        let mut state = Vec::with_capacity(20);
-        for b in parts.next().unwrap() {
-            state.push(match b {
-                b'.' => Spring::Operational,
-                b'#' => Spring::Damaged,
-                b'?' => Spring::Unknown,
-                _ => unreachable!(),
-            });
-        }
-        let chunks: Vec<_> = parts
-            .next()
-            .unwrap()
-            .split(|b| *b == b',')
-            .map(|x| x.parse_usize() as u8)
-            .collect();
+    // TODO: rayon
+    let (sum1, sum2) = input
+        .lines()
+        .map(|l| {
+            let (string, numbers) = l.split_once(' ').unwrap();
+            let mut state = string.as_bytes().to_vec();
+            let mut chunks: Vec<_> = numbers
+                .as_bytes()
+                .split(|b| *b == b',')
+                .map(|x| x.parse_usize() as u8)
+                .collect();
 
-        // println!("{} {:?}", debug(&state), chunks);
-        let mut state2: Vec<_> = state
-            .iter()
-            .copied()
-            .chain(std::iter::once(Spring::Unknown))
-            .cycle()
-            .take(state.len() * 5 + 4)
-            .collect();
-        let chunks2: Vec<_> = chunks
-            .iter()
-            .copied()
-            .cycle()
-            .take(chunks.len() * 5)
-            .collect();
-        let mut cache = HashMap::new();
-        sum1 += solve(&mut state, &chunks, &mut cache);
-        sum2 += solve(&mut state2, &chunks2, &mut cache);
-    }
+            // println!("{} {:?}", debug(&state), chunks);
+            let mut state2: Vec<_> = state
+                .iter()
+                .copied()
+                .chain(iter::once(b'?'))
+                .cycle()
+                .take(state.len() * 5 + 4)
+                .collect();
+            let mut chunks2: Vec<_> = chunks
+                .iter()
+                .copied()
+                .cycle()
+                .take(chunks.len() * 5)
+                .collect();
+            let mut cache = HashMap::new();
+            (
+                solve_wrapper(&mut state, &mut chunks, &mut cache),
+                solve_wrapper(&mut state2, &mut chunks2, &mut cache),
+                0,
+            )
+        })
+        .fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+    // .reduce(|| (0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
 
     Ok((sum1, sum2))
 }
