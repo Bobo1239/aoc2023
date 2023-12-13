@@ -768,117 +768,118 @@ pub fn day11<const GRID_SIZE: usize, const PART2_FACTOR: isize>(
 }
 
 pub fn day12(input: &str) -> Result<(usize, usize)> {
-    const MAX_ROW_LEN: usize = 20 * 5 + 4; // `* 5 + 4` due to folding
-    const MAX_CHUNKS: usize = 32;
+    const MAX_STATE_LEN: usize = 20 * 5 + 4; // `* 5 + 4` due to folding
+    const MAX_CHUNKS_LEN: usize = 32;
 
-    fn solve_(
-        state: &[u8],
-        chunks: &[u8],
-        mut offset: usize,
-        chunk_idx: usize,
-        cache: &mut [[usize; MAX_ROW_LEN + 1]],
-    ) -> usize {
-        // TODO
-        // state = state[offset..]
-        // chunks= chunk[offset..]
+    struct Problem {
+        state: Vec<u8>,
+        chunks: Vec<u8>,
+        cache: [[usize; MAX_STATE_LEN + 1]; MAX_CHUNKS_LEN + 1],
+    }
 
-        match (state[offset..].is_empty(), chunks[chunk_idx..].is_empty()) {
-            (true, true) => return 1,
-            (true, false) => return 0,
-            (false, true) => {
-                return if state[offset..].iter().all(|b| *b != b'#') {
-                    1
-                } else {
-                    0
-                };
+    impl Problem {
+        fn new(state: Vec<u8>, chunks: Vec<u8>) -> Problem {
+            Problem {
+                state,
+                chunks,
+                cache: [[usize::MAX; MAX_STATE_LEN + 1]; MAX_CHUNKS_LEN + 1],
             }
-            (false, false) => {}
         }
 
-        while state[offset] == b'.' {
-            offset += 1;
-            if offset == state.len() {
-                if chunks[chunk_idx..].is_empty() {
-                    return 1;
-                } else {
+        fn solve(&mut self, offset: usize, chunk_idx: usize) -> usize {
+            let cached_value = self.cache[chunk_idx][offset];
+            if cached_value != usize::MAX {
+                cached_value
+            } else {
+                let ret = self.solve_(offset, chunk_idx);
+                self.cache[chunk_idx][offset] = ret;
+                ret
+            }
+        }
+
+        fn solve_(&mut self, mut offset: usize, chunk_idx: usize) -> usize {
+            let mut state = &self.state[offset..];
+            let chunks = &self.chunks[chunk_idx..];
+
+            match (state.is_empty(), chunks.is_empty()) {
+                (true, true) => return 1,
+                (true, false) => return 0,
+                (false, true) => {
+                    return if state.iter().all(|b| *b != b'#') {
+                        1
+                    } else {
+                        0
+                    };
+                }
+                (false, false) => {}
+            }
+
+            while state[0] == b'.' {
+                offset += 1;
+                state = &state[1..];
+                if state.is_empty() {
+                    // `chunks` isn't empty here so there are no arrangements
                     return 0;
                 }
             }
-        }
 
-        let damaged = chunks[chunk_idx] as usize;
-        match state[offset] {
-            b'#' => {
-                if state[offset..].iter().take(damaged).any(|b| *b == b'.')
-                    || state.get(offset + damaged) == Some(&b'#')
-                {
-                    0
-                } else {
-                    // `state[offset + 1]` must be a `.` or a `?` which becomes a `.`
-                    if damaged > state[offset..].len() {
+            let damaged = chunks[0] as usize;
+            match state[0] {
+                b'#' => {
+                    if state.iter().take(damaged).any(|b| *b == b'.')
+                        || state.get(damaged) == Some(&b'#')
+                    {
                         0
-                    } else if damaged + 1 > state[offset..].len() {
-                        // We're at the end already
-                        if chunks[chunk_idx + 1..].is_empty() {
-                            1
-                        } else {
-                            0
-                        }
                     } else {
-                        solve(state, chunks, offset + damaged + 1, chunk_idx + 1, cache)
-                    }
-                }
-            }
-            b'?' => {
-                let mut ret = 0;
-
-                // Assume `#`
-                ret += if state[offset..].iter().take(damaged).all(|b| *b != b'.') {
-                    match damaged.cmp(&state[offset..].len()) {
-                        Ordering::Less => {
-                            if state[offset + damaged] == b'#' {
-                                0 // Overshoot
-                            } else {
-                                // state[damaged] must be a `.` (either directly or through `?`)
-                                solve(state, chunks, offset + damaged + 1, chunk_idx + 1, cache)
-                            }
-                        }
-                        Ordering::Equal => {
-                            if chunks[chunk_idx + 1..].is_empty() {
+                        // `state[1]` must be a `.` or a `?` which becomes a `.`
+                        if damaged > state.len() {
+                            0
+                        } else if damaged + 1 > state.len() {
+                            // We're at the end already
+                            if chunks[1..].is_empty() {
                                 1
                             } else {
                                 0
                             }
+                        } else {
+                            self.solve(offset + damaged + 1, chunk_idx + 1)
                         }
-                        Ordering::Greater => 0,
                     }
-                } else {
-                    0
-                };
+                }
+                b'?' => {
+                    let mut ret = 0;
 
-                // Assume `.`
-                ret += solve(state, chunks, offset + 1, chunk_idx, cache);
+                    // Assume `#`
+                    ret += if state.iter().take(damaged).all(|b| *b != b'.') {
+                        match damaged.cmp(&state.len()) {
+                            Ordering::Less => {
+                                if state[damaged] == b'#' {
+                                    0 // Overshoot
+                                } else {
+                                    // state[damaged] must be a `.` (either directly or through `?`)
+                                    self.solve(offset + damaged + 1, chunk_idx + 1)
+                                }
+                            }
+                            Ordering::Equal => {
+                                if chunks[1..].is_empty() {
+                                    1
+                                } else {
+                                    0
+                                }
+                            }
+                            Ordering::Greater => 0,
+                        }
+                    } else {
+                        0
+                    };
 
-                ret
+                    // Assume `.`
+                    ret += self.solve(offset + 1, chunk_idx);
+
+                    ret
+                }
+                _ => unreachable!(),
             }
-            _ => unreachable!(),
-        }
-    }
-
-    fn solve(
-        state: &[u8],
-        chunks: &[u8],
-        offset: usize,
-        chunk_idx: usize,
-        cache: &mut [[usize; MAX_ROW_LEN + 1]],
-    ) -> usize {
-        let cached_value = cache[chunk_idx][offset];
-        if cached_value != usize::MAX {
-            cached_value
-        } else {
-            let ret = solve_(state, chunks, offset, chunk_idx, cache);
-            cache[chunk_idx][offset] = ret;
-            ret
         }
     }
 
@@ -905,10 +906,9 @@ pub fn day12(input: &str) -> Result<(usize, usize)> {
                 .cycle()
                 .take(chunks.len() * 5)
                 .collect();
-            let mut cache = [[usize::MAX; MAX_ROW_LEN + 1]; MAX_CHUNKS + 1];
             (
-                solve(&state, &chunks, 0, 0, &mut cache.clone()),
-                solve(&state2, &chunks2, 0, 0, &mut cache),
+                Problem::new(state, chunks).solve(0, 0),
+                Problem::new(state2, chunks2).solve(0, 0),
             )
         })
         .reduce(|| (0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
