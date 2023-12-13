@@ -768,178 +768,152 @@ pub fn day11<const GRID_SIZE: usize, const PART2_FACTOR: isize>(
 }
 
 pub fn day12(input: &str) -> Result<(usize, usize)> {
-    fn solve_wrapper(
-        state: &mut [u8],
-        chunks: &mut [u8],
-        cache: &mut HashMap<(Vec<u8>, Vec<u8>), usize>,
+    const MAX_ROW_LEN: usize = 20 * 5 + 4; // `* 5 + 4` due to folding
+    const MAX_CHUNKS: usize = 32;
+
+    fn solve_(
+        state: &[u8],
+        chunks: &[u8],
+        mut offset: usize,
+        chunk_idx: usize,
+        cache: &mut [[usize; MAX_ROW_LEN + 1]],
     ) -> usize {
-        // TODO: Remove allocations everywhere... (custom hash? other repr?)
-        if let Some(cached) = cache.get(&(state.to_vec(), chunks.to_vec())) {
-            return *cached;
+        // TODO
+        // state = state[offset..]
+        // chunks= chunk[offset..]
+
+        match (state[offset..].is_empty(), chunks[chunk_idx..].is_empty()) {
+            (true, true) => return 1,
+            (true, false) => return 0,
+            (false, true) => {
+                return if state[offset..].iter().all(|b| *b != b'#') {
+                    1
+                } else {
+                    0
+                };
+            }
+            (false, false) => {}
         }
-        // let prev = (state.to_vec(), chunks.to_vec());
-        let ret = solve(state, chunks, cache);
-        // assert_eq!(prev, (state.to_vec(), chunks.to_vec()));
-        // println!("{} {:?} ret: {}", std::str::from_utf8(state).unwrap(), chunks, ret);
-        cache.insert((state.to_vec(), chunks.to_vec()), ret);
-        ret
+
+        while state[offset] == b'.' {
+            offset += 1;
+            if offset == state.len() {
+                if chunks[chunk_idx..].is_empty() {
+                    return 1;
+                } else {
+                    return 0;
+                }
+            }
+        }
+
+        let damaged = chunks[chunk_idx] as usize;
+        match state[offset] {
+            b'#' => {
+                if state[offset..].iter().take(damaged).any(|b| *b == b'.')
+                    || state.get(offset + damaged) == Some(&b'#')
+                {
+                    0
+                } else {
+                    // `state[offset + 1]` must be a `.` or a `?` which becomes a `.`
+                    if damaged > state[offset..].len() {
+                        0
+                    } else if damaged + 1 > state[offset..].len() {
+                        // We're at the end already
+                        if chunks[chunk_idx + 1..].is_empty() {
+                            1
+                        } else {
+                            0
+                        }
+                    } else {
+                        solve(state, chunks, offset + damaged + 1, chunk_idx + 1, cache)
+                    }
+                }
+            }
+            b'?' => {
+                let mut ret = 0;
+
+                // Assume `#`
+                ret += if state[offset..].iter().take(damaged).all(|b| *b != b'.') {
+                    match damaged.cmp(&state[offset..].len()) {
+                        Ordering::Less => {
+                            if state[offset + damaged] == b'#' {
+                                0 // Overshoot
+                            } else {
+                                // state[damaged] must be a `.` (either directly or through `?`)
+                                solve(state, chunks, offset + damaged + 1, chunk_idx + 1, cache)
+                            }
+                        }
+                        Ordering::Equal => {
+                            if chunks[chunk_idx + 1..].is_empty() {
+                                1
+                            } else {
+                                0
+                            }
+                        }
+                        Ordering::Greater => 0,
+                    }
+                } else {
+                    0
+                };
+
+                // Assume `.`
+                ret += solve(state, chunks, offset + 1, chunk_idx, cache);
+
+                ret
+            }
+            _ => unreachable!(),
+        }
     }
 
     fn solve(
-        mut state: &mut [u8],
-        mut chunks: &mut [u8],
-        cache: &mut HashMap<(Vec<u8>, Vec<u8>), usize>,
+        state: &[u8],
+        chunks: &[u8],
+        offset: usize,
+        chunk_idx: usize,
+        cache: &mut [[usize; MAX_ROW_LEN + 1]],
     ) -> usize {
-        if state.is_empty() && chunks.is_empty() {
-            return 1;
+        let cached_value = cache[chunk_idx][offset];
+        if cached_value != usize::MAX {
+            cached_value
+        } else {
+            let ret = solve_(state, chunks, offset, chunk_idx, cache);
+            cache[chunk_idx][offset] = ret;
+            ret
         }
-
-        // Remove fixed prefix
-        let mut count = None;
-        while let Some(s) = state.first() {
-            match s {
-                b'.' => {
-                    if let Some(count) = count.take() {
-                        if chunks.is_empty() {
-                            return 0;
-                        }
-                        if chunks[0] == count {
-                            chunks = &mut chunks[1..];
-                        } else {
-                            return 0;
-                        }
-                    }
-                }
-                b'#' => {
-                    if let Some(count) = &mut count {
-                        *count += 1;
-                    } else {
-                        count = Some(1);
-                    }
-                }
-                b'?' => {
-                    break;
-                }
-                _ => unreachable!(),
-            }
-            state = &mut state[1..];
-        }
-        let mut current_chunk_progress = 0;
-        if let Some(count) = count {
-            if chunks.is_empty() {
-                return 0;
-            }
-            match count.cmp(&chunks[0]) {
-                Ordering::Greater => return 0,
-                Ordering::Less => current_chunk_progress = count,
-                Ordering::Equal => {
-                    if state.is_empty() {
-                        if chunks[1..].is_empty() {
-                            return 1;
-                        } else {
-                            return 0;
-                        };
-                    } else {
-                        // We've finished this chunk which means the unknown must be `State::Operational`
-                        return solve_wrapper(&mut state[1..], &mut chunks[1..], cache);
-                    }
-                }
-            }
-        }
-
-        if chunks.is_empty() {
-            if state.iter().all(|s| *s != b'#') {
-                return 1;
-            } else {
-                return 0;
-            }
-        } else if state.is_empty() {
-            return 0;
-        } else if current_chunk_progress > 0 {
-            let remaining = (chunks[0] - current_chunk_progress) as usize;
-            if state.len() < remaining {
-                return 0;
-            } else if state.iter().take(remaining).all(|x| *x != b'.') {
-                if state.len() == remaining {
-                    if chunks[1..].is_empty() {
-                        return 1;
-                    } else {
-                        return 0;
-                    }
-                } else {
-                    match state[remaining] {
-                        b'#' => return 0, // Overshoot
-                        _ => {
-                            // If it's `?` then it must become `.`
-                            return solve_wrapper(
-                                &mut state[remaining + 1..],
-                                &mut chunks[1..],
-                                cache,
-                            );
-                        }
-                    }
-                }
-            } else {
-                // There was something unterrupting our chunk
-                return 0;
-            }
-        }
-
-        let mut ret = 0;
-        chunks[0] -= current_chunk_progress;
-        debug_assert_ne!(chunks[0], 0);
-
-        // Only try `.` if we're not currently in the middle of a chunk
-        if current_chunk_progress == 0 {
-            state[0] = b'.';
-            ret += solve_wrapper(state, chunks, cache);
-        }
-        state[0] = b'#';
-        ret += solve_wrapper(state, chunks, cache);
-
-        // Reset modifications
-        state[0] = b'?';
-        chunks[0] += current_chunk_progress;
-        ret
     }
 
-    // TODO: rayon
-    let (sum1, sum2) = input
-        .lines()
+    let sums = input
+        .par_lines()
         .map(|l| {
             let (string, numbers) = l.split_once(' ').unwrap();
-            let mut state = string.as_bytes().to_vec();
-            let mut chunks: Vec<_> = numbers
-                .as_bytes()
-                .split(|b| *b == b',')
-                .map(|x| x.parse_usize() as u8)
+            let state = string.as_bytes().to_vec();
+            let chunks: Vec<_> = numbers
+                .split(',')
+                .map(|x| x.as_bytes().parse_usize() as u8)
                 .collect();
 
-            // println!("{} {:?}", debug(&state), chunks);
-            let mut state2: Vec<_> = state
+            let state2: Vec<_> = state
                 .iter()
                 .copied()
                 .chain(iter::once(b'?'))
                 .cycle()
                 .take(state.len() * 5 + 4)
                 .collect();
-            let mut chunks2: Vec<_> = chunks
+            let chunks2: Vec<_> = chunks
                 .iter()
                 .copied()
                 .cycle()
                 .take(chunks.len() * 5)
                 .collect();
-            let mut cache = HashMap::new();
+            let mut cache = [[usize::MAX; MAX_ROW_LEN + 1]; MAX_CHUNKS + 1];
             (
-                solve_wrapper(&mut state, &mut chunks, &mut cache),
-                solve_wrapper(&mut state2, &mut chunks2, &mut cache),
-                0,
+                solve(&state, &chunks, 0, 0, &mut cache.clone()),
+                solve(&state2, &chunks2, 0, 0, &mut cache),
             )
         })
-        .fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
-    // .reduce(|| (0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+        .reduce(|| (0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
 
-    Ok((sum1, sum2))
+    Ok(sums)
 }
 
 #[cfg(test)]
