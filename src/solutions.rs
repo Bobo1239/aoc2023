@@ -916,6 +916,58 @@ pub fn day12(input: &str) -> Result<(usize, usize)> {
     Ok(sums)
 }
 
+pub fn day13(input: &str) -> Result<(usize, usize)> {
+    fn find_symmetry(lines: &[u32]) -> (Option<usize>, Option<usize>) {
+        let mut current_symmetry = None;
+        let mut potential_symmetry = None;
+        'outer: for i in 0..lines.len() - 1 {
+            let mut off_by_one_lines = 0;
+            for j in 0..=i.min(lines.len() - i - 2) {
+                match (lines[i - j] ^ lines[i + 1 + j]).count_ones() {
+                    0 => {}
+                    1 => off_by_one_lines += 1,
+                    _ => continue 'outer,
+                }
+            }
+            if off_by_one_lines == 1 {
+                potential_symmetry = Some(i + 1);
+            } else {
+                current_symmetry = Some(i + 1);
+            }
+        }
+        (current_symmetry, potential_symmetry)
+    }
+
+    let mut rows = Vec::new();
+    let mut row_length = 0;
+    let mut part1 = 0;
+    let mut part2 = 0;
+    for l in input.lines().chain(iter::once("")) {
+        if !l.is_empty() {
+            row_length = l.len();
+            rows.push(
+                l.as_bytes()
+                    .iter()
+                    .fold(0, |acc, x| (acc << 1) + if *x == b'#' { 1 } else { 0 }),
+            )
+        } else {
+            let mut cols = vec![0; row_length];
+            for row in &rows {
+                for i in 0..row_length {
+                    cols[i] = (cols[i] << 1) + ((row >> (row_length - i - 1)) & 0x1);
+                }
+            }
+            let sym_rows = find_symmetry(&rows);
+            let sym_cols = find_symmetry(&cols);
+            part1 += 100 * sym_rows.0.unwrap_or(0) + sym_cols.0.unwrap_or(0);
+            part2 += 100 * sym_rows.1.unwrap_or(0) + sym_cols.1.unwrap_or(0);
+
+            rows.clear();
+        }
+    }
+    Ok((part1, part2))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1164,6 +1216,30 @@ mod tests {
             execute_day(12, day12, default_input)?,
             (7674, 4443895258186)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_day13() -> Result<()> {
+        let example = indoc! {"
+            #.##..##.
+            ..#.##.#.
+            ##......#
+            ##......#
+            ..#.##.#.
+            ..##..##.
+            #.#.##.#.
+
+            #...##..#
+            #....#..#
+            ..##..###
+            #####.##.
+            #####.##.
+            ..##..###
+            #....#..#
+        "};
+        assert_eq!(execute_day_input(day13, example)?, (405, 400));
+        assert_eq!(execute_day(13, day13, default_input)?, (41859, 30842));
         Ok(())
     }
 }
