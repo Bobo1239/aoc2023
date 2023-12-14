@@ -3,10 +3,11 @@
 use std::{
     array,
     cmp::Ordering,
-    collections::HashMap,
+    hash::Hasher,
     iter,
     ops::Range,
     sync::atomic::{self, AtomicUsize},
+    usize,
 };
 
 use aho_corasick::AhoCorasick;
@@ -15,6 +16,7 @@ use aoc2023::AsciiByteSliceExt;
 use num::Integer;
 use rayon::prelude::*;
 use regex::bytes::Regex;
+use rustc_hash::{FxHashMap, FxHasher};
 
 pub fn day1(input: &str) -> Result<(usize, usize)> {
     // NOTE: regex doesn't work since it doesn't support overlapping matches (look-around)
@@ -437,7 +439,7 @@ pub fn day8(input: &str) -> Result<(usize, usize)> {
     let mut end_nodes = Vec::new();
     let mut part1_start_end = (0, 0);
 
-    let mut node_to_idx = HashMap::new();
+    let mut node_to_idx = FxHashMap::default();
     let mut node_edges = Vec::new();
     for (node_idx, l) in lines.skip(1).enumerate() {
         let l = l.as_bytes();
@@ -970,6 +972,7 @@ pub fn day13(input: &str) -> Result<(usize, usize)> {
 
 pub fn day14<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
     const PART2_CYCLES: usize = 1000000000;
+    const MAX_PARTS_PER_LINE: usize = 20;
 
     let mut stones = Vec::new();
     let mut partitions_all_rows = Vec::new();
@@ -1007,14 +1010,9 @@ pub fn day14<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
         }
     }
 
-    let mut stones_in_partition_all_cols = Vec::new();
-    for partitions_col in &partitions_all_cols {
-        stones_in_partition_all_cols.push(vec![0u8; partitions_col.len()]);
-    }
-    let mut stones_in_partition_all_rows = Vec::new();
-    for partitions_row in &partitions_all_rows {
-        stones_in_partition_all_rows.push(vec![0u8; partitions_row.len()]);
-    }
+    // Use arrays so we do less pointer chasing in `tilt()`
+    let mut stones_in_partition_all_cols = [[0; MAX_PARTS_PER_LINE]; GRID_SIZE];
+    let mut stones_in_partition_all_rows = [[0; MAX_PARTS_PER_LINE]; GRID_SIZE];
 
     for (col, row) in &stones {
         let part_idx = partitions_all_cols[*col]
@@ -1041,14 +1039,11 @@ pub fn day14<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
 
     fn tilt<const GRID_SIZE: usize, const REVERSE: bool>(
         in_parts: &[Vec<Range<usize>>],
-        in_stones: &[Vec<u8>],
+        in_stones: &[[u8; MAX_PARTS_PER_LINE]],
         out_pos_to_part_idx: &[[usize; GRID_SIZE]; GRID_SIZE],
-        out_stones: &mut [Vec<u8>],
+        out_stones: &mut [[u8; MAX_PARTS_PER_LINE]],
     ) {
-        out_stones
-            .iter_mut()
-            .flat_map(|x| x.iter_mut())
-            .for_each(|x| *x = 0);
+        out_stones.fill([0; MAX_PARTS_PER_LINE]);
         for x in 0..GRID_SIZE {
             let partitions = &in_parts[x];
             let stones = &in_stones[x];
@@ -1080,7 +1075,7 @@ pub fn day14<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
         }
     }
 
-    let mut hashmap = HashMap::new();
+    let mut hashmap = FxHashMap::default();
     let mut load_history = Vec::new();
     for _ in 0..PART2_CYCLES {
         // West
@@ -1122,10 +1117,12 @@ pub fn day14<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
         load_history.push(load);
 
         // Detect when the configuration enters a cycle
-        let key: Vec<_> = stones_in_partition_all_rows
-            .iter()
-            .flat_map(|x| x.iter().copied())
-            .collect();
+        // Don't store our state in the HashMap
+        let mut hasher = FxHasher::default();
+        for stones_row in &stones_in_partition_all_rows {
+            hasher.write(stones_row);
+        }
+        let key = hasher.finish();
         if let Some(last_seen) = hashmap.insert(key, hashmap.len()) {
             let period = hashmap.len() - last_seen;
             let idx = (PART2_CYCLES - last_seen) % period;
