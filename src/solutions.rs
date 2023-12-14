@@ -968,6 +968,174 @@ pub fn day13(input: &str) -> Result<(usize, usize)> {
     Ok((part1, part2))
 }
 
+pub fn day14<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
+    const PART2_CYCLES: usize = 1000000000;
+
+    let mut stones = Vec::new();
+    let mut partitions_all_rows = Vec::new();
+    let mut partitions_all_cols = vec![vec![]; GRID_SIZE];
+    let mut last_fixed_in_col = vec![0; GRID_SIZE];
+    for (row, l) in input.lines().enumerate() {
+        let mut parts_row = Vec::new();
+        let mut last_fixed_in_row = 0;
+        for (col, b) in l.as_bytes().iter().enumerate() {
+            match b {
+                b'#' => {
+                    let part_row = last_fixed_in_row..col;
+                    let part_col = last_fixed_in_col[col]..row;
+                    if !part_row.is_empty() {
+                        parts_row.push(last_fixed_in_row..col);
+                    }
+                    if !part_col.is_empty() {
+                        partitions_all_cols[col].push(last_fixed_in_col[col]..row);
+                    }
+                    last_fixed_in_row = col + 1;
+                    last_fixed_in_col[col] = row + 1;
+                }
+                b'O' => stones.push((col, row)),
+                _ => {}
+            }
+        }
+        if last_fixed_in_row != GRID_SIZE {
+            parts_row.push(last_fixed_in_row..GRID_SIZE);
+        }
+        partitions_all_rows.push(parts_row);
+    }
+    for col in 0..GRID_SIZE {
+        if last_fixed_in_col[col] != GRID_SIZE {
+            partitions_all_cols[col].push(last_fixed_in_col[col]..GRID_SIZE);
+        }
+    }
+
+    let mut stones_in_partition_all_cols = Vec::new();
+    for partitions_col in &partitions_all_cols {
+        stones_in_partition_all_cols.push(vec![0u8; partitions_col.len()]);
+    }
+    let mut stones_in_partition_all_rows = Vec::new();
+    for partitions_row in &partitions_all_rows {
+        stones_in_partition_all_rows.push(vec![0u8; partitions_row.len()]);
+    }
+
+    for (col, row) in &stones {
+        let part_idx = partitions_all_cols[*col]
+            .iter()
+            .enumerate()
+            .find(|(_, x)| x.contains(row))
+            .unwrap()
+            .0;
+        stones_in_partition_all_cols[*col][part_idx] += 1;
+    }
+
+    let mut load_part1 = 0;
+    for col in 0..GRID_SIZE {
+        let partitions = &partitions_all_cols[col];
+        let stones = &stones_in_partition_all_cols[col];
+        for (range, amount) in partitions.iter().zip(stones.iter()) {
+            for x in range.start..range.start + *amount as usize {
+                load_part1 += GRID_SIZE - x;
+            }
+        }
+    }
+
+    // Part 2
+
+    fn tilt<const GRID_SIZE: usize, const REVERSE: bool>(
+        in_parts: &[Vec<Range<usize>>],
+        in_stones: &[Vec<u8>],
+        out_pos_to_part_idx: &[[usize; GRID_SIZE]; GRID_SIZE],
+        out_stones: &mut [Vec<u8>],
+    ) {
+        out_stones
+            .iter_mut()
+            .flat_map(|x| x.iter_mut())
+            .for_each(|x| *x = 0);
+        for x in 0..GRID_SIZE {
+            let partitions = &in_parts[x];
+            let stones = &in_stones[x];
+            for (range, amount) in partitions.iter().zip(stones.iter()) {
+                let range = if REVERSE {
+                    range.end - (*amount as usize)..range.end
+                } else {
+                    range.start..range.start + *amount as usize
+                };
+                for out_idx in range {
+                    let idx = out_pos_to_part_idx[out_idx][x];
+                    out_stones[out_idx][idx] += 1;
+                }
+            }
+        }
+    }
+
+    let mut pos_to_part_idx_rows = [[0xffff; GRID_SIZE]; GRID_SIZE];
+    for i in 0..GRID_SIZE {
+        for (idx, part) in partitions_all_rows[i].iter().enumerate() {
+            pos_to_part_idx_rows[i][part.clone()].fill(idx);
+        }
+    }
+
+    let mut pos_to_part_idx_cols = [[0xffff; GRID_SIZE]; GRID_SIZE];
+    for i in 0..GRID_SIZE {
+        for (idx, part) in partitions_all_cols[i].iter().enumerate() {
+            pos_to_part_idx_cols[i][part.clone()].fill(idx);
+        }
+    }
+
+    let mut hashmap = HashMap::new();
+    let mut load_history = Vec::new();
+    for _ in 0..PART2_CYCLES {
+        // West
+        tilt::<GRID_SIZE, false>(
+            &partitions_all_cols,
+            &stones_in_partition_all_cols,
+            &pos_to_part_idx_rows,
+            &mut stones_in_partition_all_rows,
+        );
+        // South
+        tilt::<GRID_SIZE, false>(
+            &partitions_all_rows,
+            &stones_in_partition_all_rows,
+            &pos_to_part_idx_cols,
+            &mut stones_in_partition_all_cols,
+        );
+        // East
+        tilt::<GRID_SIZE, true>(
+            &partitions_all_cols,
+            &stones_in_partition_all_cols,
+            &pos_to_part_idx_rows,
+            &mut stones_in_partition_all_rows,
+        );
+        // North
+        tilt::<GRID_SIZE, true>(
+            &partitions_all_rows,
+            &stones_in_partition_all_rows,
+            &pos_to_part_idx_cols,
+            &mut stones_in_partition_all_cols,
+        );
+        let mut load = 0;
+        for row in 0..GRID_SIZE {
+            load += (GRID_SIZE - row)
+                * stones_in_partition_all_rows[row]
+                    .iter()
+                    .map(|x| *x as usize)
+                    .sum::<usize>();
+        }
+        load_history.push(load);
+
+        // Detect when the configuration enters a cycle
+        let key: Vec<_> = stones_in_partition_all_rows
+            .iter()
+            .flat_map(|x| x.iter().copied())
+            .collect();
+        if let Some(last_seen) = hashmap.insert(key, hashmap.len()) {
+            let period = hashmap.len() - last_seen;
+            let idx = (PART2_CYCLES - last_seen) % period;
+            let load_part2 = load_history[last_seen + idx - 1];
+            return Ok((load_part1, load_part2));
+        }
+    }
+    unreachable!();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1240,6 +1408,28 @@ mod tests {
         "};
         assert_eq!(execute_day_input(day13, example)?, (405, 400));
         assert_eq!(execute_day(13, day13, default_input)?, (41859, 30842));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day14() -> Result<()> {
+        let example = indoc! {"
+            O....#....
+            O.OO#....#
+            .....##...
+            OO.#O....O
+            .O.....O#.
+            O.#..O.#.#
+            ..O..#O..O
+            .......O..
+            #....###..
+            #OO..#....
+        "};
+        assert_eq!(execute_day_input(day14::<10>, example)?, (136, 64));
+        assert_eq!(
+            execute_day(14, day14::<100>, default_input)?,
+            (109596, 96105)
+        );
         Ok(())
     }
 }
