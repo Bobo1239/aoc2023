@@ -27,6 +27,7 @@ fn format_duration(dur: Duration) -> String {
     }
 }
 
+// TODO: Simplify
 fn execute_day<I: ?Sized, J: AsRef<I>, S: Display, T: Display>(
     n: usize,
     f: fn(&I) -> Result<(S, T)>,

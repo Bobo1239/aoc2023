@@ -1,8 +1,15 @@
 pub mod solutions;
 
+use std::hash::BuildHasherDefault;
+
 use anyhow::Result;
 
+use indexmap::{IndexMap, IndexSet};
+use rustc_hash::FxHasher;
 use solutions::*;
+
+pub type FxIndexMap<K, V> = IndexMap<K, V, BuildHasherDefault<FxHasher>>;
+pub type FxIndexSet<T> = IndexSet<T, BuildHasherDefault<FxHasher>>;
 
 type SolutionFn = fn(&str) -> Result<(usize, usize)>;
 pub static ALL_SOLUTIONS: &[SolutionFn] = &[
@@ -20,6 +27,7 @@ pub static ALL_SOLUTIONS: &[SolutionFn] = &[
     day12,
     day13,
     day14::<100>,
+    day15,
 ];
 
 pub fn default_input(n: usize) -> String {
@@ -27,9 +35,9 @@ pub fn default_input(n: usize) -> String {
 }
 
 pub trait AsciiByteSliceExt {
-    fn trim(&self) -> &[u8];
-    fn trim_start(&self) -> &[u8];
-    fn trim_end(&self) -> &[u8];
+    fn trim_space(&self) -> &[u8];
+    fn trim_space_start(&self) -> &[u8];
+    fn trim_space_end(&self) -> &[u8];
     fn parse_usize(&self) -> usize;
     fn parse_isize(&self) -> isize;
 }
@@ -37,11 +45,11 @@ pub trait AsciiByteSliceExt {
 // Trim implementations are copied from the still unstable `feature(byte_slice_trim_ascii)`.
 // (github.com/rust-lang/rust/issues/94035)
 impl AsciiByteSliceExt for [u8] {
-    fn trim(&self) -> &[u8] {
-        self.trim_start().trim_end()
+    fn trim_space(&self) -> &[u8] {
+        self.trim_space_start().trim_space_end()
     }
 
-    fn trim_start(&self) -> &[u8] {
+    fn trim_space_start(&self) -> &[u8] {
         let mut bytes = self;
         while let [first, rest @ ..] = bytes {
             if *first == b' ' {
@@ -53,7 +61,7 @@ impl AsciiByteSliceExt for [u8] {
         bytes
     }
 
-    fn trim_end(&self) -> &[u8] {
+    fn trim_space_end(&self) -> &[u8] {
         let mut bytes = self;
         while let [rest @ .., last] = bytes {
             if *last == b' ' {

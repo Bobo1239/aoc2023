@@ -5,6 +5,7 @@ use std::{
     cmp::Ordering,
     hash::Hasher,
     iter,
+    num::Wrapping,
     ops::Range,
     sync::atomic::{self, AtomicUsize},
     usize,
@@ -17,7 +18,7 @@ use rayon::prelude::*;
 use regex::bytes::Regex;
 use rustc_hash::{FxHashMap, FxHasher};
 
-use crate::AsciiByteSliceExt;
+use crate::{AsciiByteSliceExt, FxIndexMap};
 
 pub fn day1(input: &str) -> Result<(usize, usize)> {
     // NOTE: regex doesn't work since it doesn't support overlapping matches (look-around)
@@ -180,12 +181,12 @@ pub fn day4(input: &str) -> Result<(usize, usize)> {
         let my = my_nums
             .as_bytes()
             .chunks(3)
-            .map(|c| c.trim_start().parse_usize())
+            .map(|c| c.trim_space_start().parse_usize())
             .fold(0u128, |acc, n| acc | 1 << n);
         let win = win_nums
             .as_bytes()
             .chunks(3)
-            .map(|c| c.trim_start().parse_usize())
+            .map(|c| c.trim_space_start().parse_usize())
             .fold(0u128, |acc, n| acc | 1 << n);
 
         let matches = (my & win).count_ones();
@@ -1134,6 +1135,54 @@ pub fn day14<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
     unreachable!();
 }
 
+pub fn day15(input: &str) -> Result<(usize, usize)> {
+    let mut sum = 0;
+    let mut current_hash = Wrapping(0u8);
+    let mut box_idx = 0;
+    let mut focal_length = None;
+    let mut label = Vec::with_capacity(6);
+
+    let mut boxes = vec![FxIndexMap::default(); 256];
+
+    for b in input.as_bytes() {
+        match b {
+            b',' | b'\n' => {
+                sum += current_hash.0 as usize;
+                if let Some(fc) = focal_length {
+                    boxes[box_idx].insert(label.clone(), fc);
+                } else {
+                    boxes[box_idx].shift_remove(&label);
+                }
+                current_hash = Wrapping(0);
+                focal_length = None;
+                label.clear();
+            }
+            c => {
+                match c {
+                    b'=' | b'-' => {
+                        box_idx = current_hash.0 as usize;
+                    }
+                    n if n.is_ascii_digit() => {
+                        focal_length = Some(n - b'0');
+                    }
+                    _ => {
+                        label.push(c);
+                    }
+                }
+                current_hash += c;
+                current_hash *= 17;
+            }
+        }
+    }
+    let mut total_power = 0;
+    for (b, boxx) in boxes.iter().enumerate() {
+        for (s, fc) in boxx.values().enumerate() {
+            total_power += (b + 1) * (s + 1) * *fc as usize;
+        }
+    }
+    Ok((sum, total_power))
+}
+
 #[cfg(test)]
 mod tests {
     use std::fmt::Display;
@@ -1430,6 +1479,14 @@ mod tests {
             execute_day(14, day14::<100>, default_input)?,
             (109596, 96105)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_day15() -> Result<()> {
+        let example = "rn=1,cm-,qp=3,cm=2,qp-,pc=4,ot=9,ab=5,pc-,pc=6,ot=7\n";
+        assert_eq!(execute_day_input(day15, example)?, (1320, 145));
+        assert_eq!(execute_day(15, day15, default_input)?, (517315, 247763));
         Ok(())
     }
 }
