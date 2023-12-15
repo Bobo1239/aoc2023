@@ -1,3 +1,31 @@
+pub mod solutions;
+
+use anyhow::Result;
+
+use solutions::*;
+
+type SolutionFn = fn(&str) -> Result<(usize, usize)>;
+pub static ALL_SOLUTIONS: &[SolutionFn] = &[
+    day1,
+    day2,
+    day3,
+    day4,
+    day5,
+    day6,
+    day7,
+    day8,
+    day9,
+    day10::<140>,
+    day11::<140, 1000000>,
+    day12,
+    day13,
+    day14::<100>,
+];
+
+pub fn default_input(n: usize) -> String {
+    std::fs::read_to_string(format!("inputs/{}.txt", n)).unwrap()
+}
+
 pub trait AsciiByteSliceExt {
     fn trim(&self) -> &[u8];
     fn trim_start(&self) -> &[u8];

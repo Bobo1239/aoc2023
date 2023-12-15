@@ -12,11 +12,12 @@ use std::{
 
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
-use aoc2023::AsciiByteSliceExt;
 use num::Integer;
 use rayon::prelude::*;
 use regex::bytes::Regex;
 use rustc_hash::{FxHashMap, FxHasher};
+
+use crate::AsciiByteSliceExt;
 
 pub fn day1(input: &str) -> Result<(usize, usize)> {
     // NOTE: regex doesn't work since it doesn't support overlapping matches (look-around)
@@ -1135,10 +1136,12 @@ pub fn day14<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::*;
+    use std::fmt::Display;
 
     use indoc::indoc;
+
+    use super::*;
+    use crate::*;
 
     fn execute_day<I: ?Sized, J: AsRef<I>, S: Display, T: Display>(
         n: usize,

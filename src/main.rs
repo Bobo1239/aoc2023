@@ -1,5 +1,3 @@
-mod solutions;
-
 use std::{
     fmt::Display,
     time::{Duration, Instant},
@@ -7,31 +5,15 @@ use std::{
 
 use anyhow::Result;
 
-use solutions::*;
+use aoc2023::ALL_SOLUTIONS;
 
 fn main() -> Result<()> {
     // Initialize Rayon's global thread pool in advance so that doesn't influence our timings.
     rayon::ThreadPoolBuilder::new().build_global()?;
 
     let mut total = Duration::default();
-    let days = [
-        day1,
-        day2,
-        day3,
-        day4,
-        day5,
-        day6,
-        day7,
-        day8,
-        day9,
-        day10::<140>,
-        day11::<140, 1000000>,
-        day12,
-        day13,
-        day14::<100>,
-    ];
-    for (i, day) in days.into_iter().enumerate() {
-        total += execute_day(i + 1, day, default_input)?;
+    for (i, day) in ALL_SOLUTIONS.iter().enumerate() {
+        total += execute_day(i + 1, *day, aoc2023::default_input)?;
     }
     println!("Total processing time: {}", format_duration(total));
     Ok(())
@@ -43,14 +25,6 @@ fn format_duration(dur: Duration) -> String {
     } else {
         format!("{} us", dur.as_micros())
     }
-}
-
-fn load_input(name: &str) -> String {
-    std::fs::read_to_string("inputs/".to_string() + name).unwrap()
-}
-
-fn default_input(n: usize) -> String {
-    load_input(&format!("{}.txt", n))
 }
 
 fn execute_day<I: ?Sized, J: AsRef<I>, S: Display, T: Display>(
