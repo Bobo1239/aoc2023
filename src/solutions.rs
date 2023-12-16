@@ -1232,6 +1232,12 @@ pub fn day16<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
     }
 
     impl Direction {
+        const ALL: [Direction; 4] = [
+            Direction::Up,
+            Direction::Down,
+            Direction::Left,
+            Direction::Right,
+        ];
         fn is_horizontal(self) -> bool {
             matches!(self, Direction::Left | Direction::Right)
         }
@@ -1418,22 +1424,19 @@ pub fn day16<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
             .count()
     }
 
-    let mut part1 = 0;
-    let mut part2 = 0;
-    for dir in [
-        Direction::Right,
-        Direction::Left,
-        Direction::Up,
-        Direction::Down,
-    ] {
-        for pos in 0..GRID_SIZE {
+    let (part1, part2) = Direction::ALL
+        .into_iter()
+        .flat_map(|d| (0..GRID_SIZE).map(move |i| (d, i)))
+        .par_bridge()
+        .map(|(dir, pos)| {
             let n = calculate_energized_cells(dir, pos, &mirrors_rows, &mirrors_cols);
             if (dir, pos) == (Direction::Right, 0) {
-                part1 = n;
+                (n, n)
+            } else {
+                (0, n)
             }
-            part2 = part2.max(n);
-        }
-    }
+        })
+        .reduce(|| (0, 0), |a, b| (a.0 + b.0, a.1.max(b.1)));
     Ok((part1, part2))
 }
 
