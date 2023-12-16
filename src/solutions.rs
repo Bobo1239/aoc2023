@@ -1184,12 +1184,13 @@ pub fn day15(input: &str) -> Result<(usize, usize)> {
 }
 
 pub fn day16<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum Cell {
         MirrorRightUp,
         MirrorRightDown,
         SplitterVertical,
         SplitterHorizontal,
+        Border,
     }
 
     impl Cell {
@@ -1217,6 +1218,7 @@ pub fn day16<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
                     Direction::Right => &[Direction::Right],
                     Direction::Up | Direction::Down => &[Direction::Left, Direction::Right],
                 },
+                Cell::Border => &[],
             }
         }
     }
@@ -1249,17 +1251,33 @@ pub fn day16<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
     #[derive(Debug, Clone, Copy)]
     struct Info<T> {
         data: T,
-        // NOTE: Changing these to u8 improves performance but requires many casts in the algorithm
+        // IDEA: Changing these to u8 improves performance but requires many casts in the algorithm
         //       which isn't worth it atm.
         x: usize,
         y: usize,
         row_idx: usize,
         col_idx: usize,
     }
+
+    // NOTE: We add a border so we don't have to do bounds checks in our hot loop
     let mut mirrors_rows: [_; GRID_SIZE] = array::from_fn(|_| Vec::new());
-    let mut mirrors_cols: [_; GRID_SIZE] = array::from_fn(|_| Vec::new());
+    let mut mirrors_cols: [_; GRID_SIZE] = array::from_fn(|x| {
+        vec![Info {
+            data: Cell::Border,
+            x,
+            y: 0,
+            row_idx: 1337,
+            col_idx: 0,
+        }]
+    });
     for (y, l) in input.as_bytes().chunks(GRID_SIZE + 1).enumerate() {
-        let mut mirrors_this_row = Vec::new();
+        let mut mirrors_this_row = vec![Info {
+            data: Cell::Border,
+            x: 0,
+            y,
+            row_idx: 0,
+            col_idx: 1337,
+        }];
         for (x, b) in l.iter().take(GRID_SIZE).enumerate() {
             let cell = match *b {
                 b'\\' => Some(Cell::MirrorRightDown),
@@ -1280,7 +1298,23 @@ pub fn day16<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
                 mirrors_cols[x].push(info);
             }
         }
+        mirrors_this_row.push(Info {
+            data: Cell::Border,
+            x: GRID_SIZE - 1,
+            y,
+            row_idx: mirrors_this_row.len(),
+            col_idx: 1337,
+        });
         mirrors_rows[y] = mirrors_this_row;
+    }
+    for x in 0..GRID_SIZE {
+        mirrors_cols[x].push(Info {
+            data: Cell::Border,
+            x,
+            y: GRID_SIZE - 1,
+            row_idx: 1337,
+            col_idx: mirrors_cols[x].len(),
+        });
     }
 
     fn calculate_energized_cells<const GRID_SIZE: usize>(
@@ -1289,8 +1323,9 @@ pub fn day16<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
         mirrors_rows: &[Vec<Info<Cell>>; GRID_SIZE],
         mirrors_cols: &[Vec<Info<Cell>>; GRID_SIZE],
     ) -> usize {
-        // TODO: Split up illuminated into vertical and horizontal for cache coherency; OR them at the end
-        // TODO: Bitmask for fast ORs?
+        // IDEA: Split into energized_rows/cols use bitmaps
+        // NOTE: Even if we don't count energized cells at all we still have 5ms runtime due to our
+        //       search algorithm
         let mut energized = [[false; GRID_SIZE]; GRID_SIZE];
 
         // Get first cell in line
@@ -1303,35 +1338,28 @@ pub fn day16<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
         let Some(first) = (if reverse { line.last() } else { line.first() }) else {
             return GRID_SIZE;
         };
+        debug_assert_eq!(first.data, Cell::Border);
 
-        // Mark cells from start to first cell
-        if in_dir.is_horizontal() {
-            if reverse {
-                energized[in_pos][first.x..GRID_SIZE].fill(true);
-            } else {
-                energized[in_pos][0..=first.x].fill(true);
-            }
-        } else {
-            let range = if reverse {
-                first.y..=GRID_SIZE - 1
-            } else {
-                0..=first.y
-            };
-            for y in range {
-                energized[y][in_pos] = true;
-            }
+        let mut to_explore = Vec::new();
+        to_explore.push(Info {
+            data: in_dir,
+            x: first.x,
+            y: first.y,
+            row_idx: first.row_idx,
+            col_idx: first.col_idx,
+        });
+
+        for i in 0..GRID_SIZE {
+            assert_eq!(
+                mirrors_cols[i].last().unwrap().col_idx + 1,
+                mirrors_cols[i].len()
+            );
+            assert_eq!(
+                mirrors_rows[i].last().unwrap().row_idx + 1,
+                mirrors_rows[i].len()
+            );
         }
 
-        let mut queue = Vec::new();
-        for out_dir in first.data.outgoing_rays(in_dir) {
-            queue.push(Info {
-                data: out_dir,
-                x: first.x,
-                y: first.y,
-                row_idx: first.row_idx,
-                col_idx: first.col_idx,
-            })
-        }
         // 0 is a bitmask of already explored directions; This is much faster than a hashmap
         let mut explored = [[0; GRID_SIZE]; GRID_SIZE];
         while let Some(Info {
@@ -1340,59 +1368,47 @@ pub fn day16<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
             y,
             row_idx,
             col_idx,
-        }) = queue.pop()
+        }) = to_explore.pop()
         {
             if (explored[x][y] & dir.to_bitmask()) != 0 {
                 continue;
             }
             explored[x][y] |= dir.to_bitmask();
 
-            let cell_hit = match dir {
-                Direction::Up => (col_idx > 0).then(|| &mirrors_cols[x][col_idx - 1]),
-                Direction::Down => mirrors_cols[x].get(col_idx + 1),
-                Direction::Left => (row_idx > 0).then(|| &mirrors_rows[y][row_idx - 1]),
-                Direction::Right => mirrors_rows[y].get(row_idx + 1),
+            // No bounds check necessary since we're guaranteed to hit a border on the edge from
+            // which no new rays are outgoing
+            let hit = match dir {
+                Direction::Up => mirrors_cols[x][col_idx - 1],
+                Direction::Down => mirrors_cols[x][col_idx + 1],
+                Direction::Left => mirrors_rows[y][row_idx - 1],
+                Direction::Right => mirrors_rows[y][row_idx + 1],
             };
-            if let Some(hit) = cell_hit {
-                match dir {
-                    Direction::Up | Direction::Down => {
-                        for y in y.min(hit.y)..=y.max(hit.y) {
-                            energized[y][x] = true;
-                        }
-                    }
-                    Direction::Left | Direction::Right => {
-                        energized[y][x.min(hit.x)..=x.max(hit.x)].fill(true);
+            match dir {
+                Direction::Up | Direction::Down => {
+                    for y in y.min(hit.y)..=y.max(hit.y) {
+                        energized[y][x] = true;
                     }
                 }
-                // Also set the reverse direction as explored which allows us to skip some
-                // calculations in certain constellations.
-                // This is correct since there's no case where the reverse direction could reach a
-                // cell which we won't be exploring anyways with our current ray.
+                Direction::Left | Direction::Right => {
+                    energized[y][x.min(hit.x)..=x.max(hit.x)].fill(true);
+                }
+            }
+            // Also set the reverse direction as explored which allows us to skip some
+            // calculations in certain constellations.
+            // This is correct since there's no case where the reverse direction could reach a
+            // cell which we won't be exploring anyways with our current ray.
+            // Just need to special case borders since they overlap other cells.
+            if hit.data != Cell::Border {
                 explored[hit.x][hit.y] |= dir.flip().to_bitmask();
-                for new_dir in hit.data.outgoing_rays(*dir) {
-                    queue.push(Info {
-                        data: new_dir,
-                        x: hit.x,
-                        y: hit.y,
-                        row_idx: hit.row_idx,
-                        col_idx: hit.col_idx,
-                    });
-                }
-            } else {
-                // Ray goes to edge
-                let range = match dir {
-                    Direction::Up => 0..y,
-                    Direction::Down => y..GRID_SIZE,
-                    Direction::Left => 0..x,
-                    Direction::Right => x..GRID_SIZE,
-                };
-                if dir.is_horizontal() {
-                    energized[y][range].fill(true);
-                } else {
-                    for i in range {
-                        energized[i][x] = true;
-                    }
-                }
+            }
+            for new_dir in hit.data.outgoing_rays(dir) {
+                to_explore.push(Info {
+                    data: *new_dir,
+                    x: hit.x,
+                    y: hit.y,
+                    row_idx: hit.row_idx,
+                    col_idx: hit.col_idx,
+                });
             }
         }
         energized
