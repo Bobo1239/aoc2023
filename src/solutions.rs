@@ -3,7 +3,6 @@
 use std::{
     array,
     cmp::Ordering,
-    collections::BinaryHeap,
     hash::Hasher,
     iter,
     num::Wrapping,
@@ -1434,27 +1433,14 @@ pub fn day17<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
     // Ideas:
     // - A*
     // - Bidirectional
-    // - Specialized prioqueue (bucket queue?)
 
     #[derive(Debug, Copy, Clone, Eq, PartialEq)]
     struct State {
-        cost: u16,
         pos: (u8, u8),
         next_dir: Direction,
     }
-    impl Ord for State {
-        fn cmp(&self, other: &Self) -> Ordering {
-            // Flipped since `BinaryHeap` implements a max-heap which becomes a min-heap with this.
-            other.cost.cmp(&self.cost)
-        }
-    }
-    impl PartialOrd for State {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
-    }
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     enum Direction {
         Vertical,
         Horizontal,
@@ -1483,32 +1469,33 @@ pub fn day17<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
             dist[dir.idx()][0][0] = 0;
         }
 
-        let mut heap = BinaryHeap::new();
-        heap.push(State {
-            cost: 0,
+        let mut bucket_queue = vec![Vec::with_capacity(32); 2048];
+        bucket_queue[0].push(State {
             pos: (0, 0),
             next_dir: Direction::Horizontal,
         });
-        heap.push(State {
-            cost: 0,
+        bucket_queue[0].push(State {
             pos: (0, 0),
             next_dir: Direction::Vertical,
         });
+        let mut bucket_queue_lowest = 0;
 
-        let mut target_dir = Direction::Vertical;
-        while let Some(State {
-            cost,
-            pos,
-            next_dir,
-        }) = heap.pop()
-        {
-            if pos == (GRID_SIZE as u8 - 1, GRID_SIZE as u8 - 1) {
-                target_dir = next_dir;
-                break;
+        let mut target_dir = None;
+        while let Some(State { pos, next_dir }) = bucket_queue[bucket_queue_lowest].pop() {
+            let cost = bucket_queue_lowest;
+            while bucket_queue[bucket_queue_lowest].is_empty() {
+                bucket_queue_lowest += 1;
             }
-            if cost > dist[next_dir.idx()][pos.0 as usize][pos.1 as usize] {
+
+            // This is quite likely since we just push instead of update our priority queue
+            if cost > dist[next_dir.idx()][pos.0 as usize][pos.1 as usize] as usize {
                 continue;
             }
+            if pos == (GRID_SIZE as u8 - 1, GRID_SIZE as u8 - 1) {
+                target_dir = Some(next_dir);
+                break;
+            }
+
             let new_next_dir = next_dir.change();
             for neg in [-1, 1] {
                 let mut cost_sum = 0;
@@ -1527,28 +1514,28 @@ pub fn day17<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
                     }
 
                     let new_pos = (new_pos.0 as usize, new_pos.1 as usize);
-                    cost_sum += grid[new_pos.1][new_pos.0] as u16;
+                    cost_sum += grid[new_pos.1][new_pos.0] as usize;
                     let new_cost = cost + cost_sum;
 
                     if i < MIN_STEPS {
                         continue;
                     }
 
-                    if new_cost < dist[new_next_dir.idx()][new_pos.0][new_pos.1] {
-                        dist[new_next_dir.idx()][new_pos.0][new_pos.1] = new_cost;
-                        // TODO: This is creating duplicate entries for the same (pos, next_dir)
-                        //       instead of updating which isn't supported on `BinaryHeap`; Using
-                        //       one of the keyed priority queues (utilizing `Hash`) is slower
-                        heap.push(State {
-                            cost: new_cost,
+                    if new_cost < dist[new_next_dir.idx()][new_pos.0][new_pos.1] as usize {
+                        dist[new_next_dir.idx()][new_pos.0][new_pos.1] = new_cost as u16;
+                        let new_state = State {
                             pos: (new_pos.0 as u8, new_pos.1 as u8),
                             next_dir: new_next_dir,
-                        });
+                        };
+                        bucket_queue[new_cost].push(new_state);
+                        if new_cost < bucket_queue_lowest {
+                            bucket_queue_lowest = new_cost;
+                        }
                     }
                 }
             }
         }
-        dist[target_dir.idx()][GRID_SIZE - 1][GRID_SIZE - 1] as usize
+        dist[target_dir.unwrap().idx()][GRID_SIZE - 1][GRID_SIZE - 1] as usize
     }
 
     let mut grid = [[0; GRID_SIZE]; GRID_SIZE];
@@ -1558,10 +1545,11 @@ pub fn day17<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
         }
     }
 
-    Ok((
-        solve::<GRID_SIZE, 1, 3>(&grid),
-        solve::<GRID_SIZE, 4, 10>(&grid),
-    ))
+    let solutions: Vec<_> = [solve::<GRID_SIZE, 1, 3>, solve::<GRID_SIZE, 4, 10>]
+        .into_par_iter()
+        .map(|f| f(&grid))
+        .collect();
+    Ok((solutions[0], solutions[1]))
 }
 
 #[cfg(test)]
