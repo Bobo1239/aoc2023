@@ -1430,12 +1430,9 @@ pub fn day16<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
 }
 
 pub fn day17<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
-    // Ideas:
-    // - A*
-    // - Bidirectional
-
     #[derive(Debug, Copy, Clone, Eq, PartialEq)]
     struct State {
+        cost: u16,
         pos: (u8, u8),
         next_dir: Direction,
     }
@@ -1471,18 +1468,25 @@ pub fn day17<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
 
         let mut bucket_queue = vec![Vec::with_capacity(32); 2048];
         bucket_queue[0].push(State {
+            cost: 0,
             pos: (0, 0),
             next_dir: Direction::Horizontal,
         });
         bucket_queue[0].push(State {
+            cost: 0,
             pos: (0, 0),
             next_dir: Direction::Vertical,
         });
         let mut bucket_queue_lowest = 0;
 
         let mut target_dir = None;
-        while let Some(State { pos, next_dir }) = bucket_queue[bucket_queue_lowest].pop() {
-            let cost = bucket_queue_lowest;
+        while let Some(State {
+            cost,
+            pos,
+            next_dir,
+        }) = bucket_queue[bucket_queue_lowest].pop()
+        {
+            let cost = cost as usize;
             while bucket_queue[bucket_queue_lowest].is_empty() {
                 bucket_queue_lowest += 1;
             }
@@ -1524,12 +1528,15 @@ pub fn day17<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
                     if new_cost < dist[new_next_dir.idx()][new_pos.0][new_pos.1] as usize {
                         dist[new_next_dir.idx()][new_pos.0][new_pos.1] = new_cost as u16;
                         let new_state = State {
+                            cost: new_cost as u16,
                             pos: (new_pos.0 as u8, new_pos.1 as u8),
                             next_dir: new_next_dir,
                         };
-                        bucket_queue[new_cost].push(new_state);
-                        if new_cost < bucket_queue_lowest {
-                            bucket_queue_lowest = new_cost;
+                        // A* improves our search a just a little bit
+                        let heuristic = new_cost + GRID_SIZE - new_pos.0 + GRID_SIZE - new_pos.1;
+                        bucket_queue[heuristic].push(new_state);
+                        if heuristic < bucket_queue_lowest {
+                            bucket_queue_lowest = heuristic;
                         }
                     }
                 }
