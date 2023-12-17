@@ -1329,9 +1329,9 @@ pub fn day16<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
         mirrors_rows: &[Vec<Info<Cell>>; GRID_SIZE],
         mirrors_cols: &[Vec<Info<Cell>>; GRID_SIZE],
     ) -> usize {
-        // IDEA: Split into energized_rows/cols use bitmaps
-        // NOTE: Even if we don't count energized cells at all we still have 5ms runtime due to our
-        //       search algorithm
+        // IDEA: Split into energized_rows/colsuse bitmaps
+        // IDEA: Bitmaps
+        // IDEA: Count while exploring instead of only at the end
         let mut energized = [[false; GRID_SIZE]; GRID_SIZE];
 
         // Get first cell in line
@@ -1354,17 +1354,6 @@ pub fn day16<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
             row_idx: first.row_idx,
             col_idx: first.col_idx,
         });
-
-        for i in 0..GRID_SIZE {
-            assert_eq!(
-                mirrors_cols[i].last().unwrap().col_idx + 1,
-                mirrors_cols[i].len()
-            );
-            assert_eq!(
-                mirrors_rows[i].last().unwrap().row_idx + 1,
-                mirrors_rows[i].len()
-            );
-        }
 
         // 0 is a bitmask of already explored directions; This is much faster than a hashmap
         let mut explored = [[0; GRID_SIZE]; GRID_SIZE];
