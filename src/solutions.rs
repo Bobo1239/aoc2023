@@ -3,6 +3,7 @@
 use std::{
     array,
     cmp::Ordering,
+    collections::BinaryHeap,
     hash::Hasher,
     iter,
     num::Wrapping,
@@ -1429,6 +1430,140 @@ pub fn day16<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
     Ok((part1, part2))
 }
 
+pub fn day17<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
+    // Ideas:
+    // - A*
+    // - Bidirectional
+    // - Specialized prioqueue (bucket queue?)
+
+    #[derive(Debug, Copy, Clone, Eq, PartialEq)]
+    struct State {
+        cost: u16,
+        pos: (u8, u8),
+        next_dir: Direction,
+    }
+    impl Ord for State {
+        fn cmp(&self, other: &Self) -> Ordering {
+            // Flipped since `BinaryHeap` implements a max-heap which becomes a min-heap with this.
+            other.cost.cmp(&self.cost)
+        }
+    }
+    impl PartialOrd for State {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    enum Direction {
+        Vertical,
+        Horizontal,
+    }
+    impl Direction {
+        fn idx(self) -> usize {
+            match self {
+                Direction::Vertical => 0,
+                Direction::Horizontal => 1,
+            }
+        }
+        fn change(self) -> Direction {
+            match self {
+                Direction::Vertical => Direction::Horizontal,
+                Direction::Horizontal => Direction::Vertical,
+            }
+        }
+    }
+
+    fn solve<const GRID_SIZE: usize, const MIN_STEPS: isize, const MAX_STEPS: isize>(
+        grid: &[[u8; GRID_SIZE]; GRID_SIZE],
+    ) -> usize {
+        // Need to keep track of shortest distance for each direction separately!
+        let mut dist = [[[u16::MAX; GRID_SIZE]; GRID_SIZE]; 2];
+        for dir in [Direction::Vertical, Direction::Horizontal] {
+            dist[dir.idx()][0][0] = 0;
+        }
+
+        let mut heap = BinaryHeap::new();
+        heap.push(State {
+            cost: 0,
+            pos: (0, 0),
+            next_dir: Direction::Horizontal,
+        });
+        heap.push(State {
+            cost: 0,
+            pos: (0, 0),
+            next_dir: Direction::Vertical,
+        });
+
+        let mut target_dir = Direction::Vertical;
+        while let Some(State {
+            cost,
+            pos,
+            next_dir,
+        }) = heap.pop()
+        {
+            if pos == (GRID_SIZE as u8 - 1, GRID_SIZE as u8 - 1) {
+                target_dir = next_dir;
+                break;
+            }
+            if cost > dist[next_dir.idx()][pos.0 as usize][pos.1 as usize] {
+                continue;
+            }
+            let new_next_dir = next_dir.change();
+            for neg in [-1, 1] {
+                let mut cost_sum = 0;
+                for i in 1..=MAX_STEPS {
+                    let delta = match next_dir {
+                        Direction::Horizontal => (1, 0),
+                        Direction::Vertical => (0, 1),
+                    };
+                    let new_pos = (
+                        pos.0 as isize + delta.0 * i * neg,
+                        pos.1 as isize + delta.1 * i * neg,
+                    );
+                    let range = 0..GRID_SIZE as isize;
+                    if !range.contains(&new_pos.0) || !range.contains(&new_pos.1) {
+                        break;
+                    }
+
+                    let new_pos = (new_pos.0 as usize, new_pos.1 as usize);
+                    cost_sum += grid[new_pos.1][new_pos.0] as u16;
+                    let new_cost = cost + cost_sum;
+
+                    if i < MIN_STEPS {
+                        continue;
+                    }
+
+                    if new_cost < dist[new_next_dir.idx()][new_pos.0][new_pos.1] {
+                        dist[new_next_dir.idx()][new_pos.0][new_pos.1] = new_cost;
+                        // TODO: This is creating duplicate entries for the same (pos, next_dir)
+                        //       instead of updating which isn't supported on `BinaryHeap`; Using
+                        //       one of the keyed priority queues (utilizing `Hash`) is slower
+                        heap.push(State {
+                            cost: new_cost,
+                            pos: (new_pos.0 as u8, new_pos.1 as u8),
+                            next_dir: new_next_dir,
+                        });
+                    }
+                }
+            }
+        }
+        dist[target_dir.idx()][GRID_SIZE - 1][GRID_SIZE - 1] as usize
+    }
+
+    let mut grid = [[0; GRID_SIZE]; GRID_SIZE];
+    for (y, l) in input.as_bytes().chunks(GRID_SIZE + 1).enumerate() {
+        for (x, b) in l.iter().take(GRID_SIZE).enumerate() {
+            grid[y][x] = b - b'0';
+        }
+    }
+
+    Ok((
+        solve::<GRID_SIZE, 1, 3>(&grid),
+        solve::<GRID_SIZE, 4, 10>(&grid),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use std::fmt::Display;
@@ -1752,6 +1887,29 @@ mod tests {
         "};
         assert_eq!(execute_day_input(day16::<10>, example)?, (46, 51));
         assert_eq!(execute_day(16, day16::<110>, default_input)?, (8098, 8335));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day17() -> Result<()> {
+        let example = indoc! {"
+            2413432311323
+            3215453535623
+            3255245654254
+            3446585845452
+            4546657867536
+            1438598798454
+            4457876987766
+            3637877979653
+            4654967986887
+            4564679986453
+            1224686865563
+            2546548887735
+            4322674655533
+        "};
+
+        assert_eq!(execute_day_input(day17::<13>, example)?, (102, 94));
+        assert_eq!(execute_day(17, day17::<141>, default_input)?, (902, 1073));
         Ok(())
     }
 }
