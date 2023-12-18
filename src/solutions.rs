@@ -1559,6 +1559,63 @@ pub fn day17<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
     Ok((solutions[0], solutions[1]))
 }
 
+pub fn day18(input: &str) -> Result<(usize, usize)> {
+    let mut vertices1 = Vec::new();
+    let mut vertices2 = Vec::new();
+    let mut len_sum1 = 0;
+    let mut len_sum2 = 0;
+    let mut pos1 = (0, 0);
+    let mut pos2 = (0, 0);
+    for l in input.lines() {
+        let mut parts = l.split_ascii_whitespace();
+        let dir1 = parts.next().unwrap();
+        let len1 = parts.next().unwrap().as_bytes().parse_isize();
+        let hex = &parts.next().unwrap()[2..8];
+
+        len_sum1 += len1 as usize;
+        let d1 = match dir1.as_bytes()[0] {
+            b'L' => (-len1, 0),
+            b'R' => (len1, 0),
+            b'D' => (0, len1),
+            b'U' => (0, -len1),
+            _ => unreachable!(),
+        };
+        pos1 = (pos1.0 + d1.0, pos1.1 + d1.1);
+        vertices1.push(pos1);
+
+        let len2 = isize::from_str_radix(&hex[..5], 16)?;
+        len_sum2 += len2 as usize;
+        let d2 = match hex.as_bytes()[5] {
+            b'2' => (-len2, 0),
+            b'0' => (len2, 0),
+            b'1' => (0, len2),
+            b'3' => (0, -len2),
+            _ => unreachable!(),
+        };
+        pos2 = (pos2.0 + d2.0, pos2.1 + d2.1);
+        vertices2.push(pos2);
+    }
+
+    fn calculate_area(vertices: &[(isize, isize)], outer_len: usize) -> usize {
+        // Shoelace formula; https://stackoverflow.com/a/451482
+        let mut area = 0;
+        for i in 0..vertices.len() {
+            let j = (i + 1) % vertices.len();
+            area += vertices[i].0 * vertices[j].1;
+            area -= vertices[i].1 * vertices[j].0;
+        }
+        area /= 2;
+        // `outer_len / 2` since half of it is already accounted for by the area calculation
+        // `+ 1` since we're "loosing" one square by going around the perimeter once
+        area as usize + outer_len / 2 + 1
+    }
+
+    Ok((
+        calculate_area(&vertices1, len_sum1),
+        calculate_area(&vertices2, len_sum2),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use std::fmt::Display;
@@ -1905,6 +1962,32 @@ mod tests {
 
         assert_eq!(execute_day_input(day17::<13>, example)?, (102, 94));
         assert_eq!(execute_day(17, day17::<141>, default_input)?, (902, 1073));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day18() -> Result<()> {
+        let example = indoc! {"
+            R 6 (#70c710)
+            D 5 (#0dc571)
+            L 2 (#5713f0)
+            D 2 (#d2c081)
+            R 2 (#59c680)
+            D 2 (#411b91)
+            L 5 (#8ceee2)
+            U 2 (#caa173)
+            L 1 (#1b58a2)
+            U 2 (#caa171)
+            R 2 (#7807d2)
+            U 3 (#a77fa3)
+            L 2 (#015232)
+            U 2 (#7a21e3)
+        "};
+        assert_eq!(execute_day_input(day18, example)?, (62, 952408144115));
+        assert_eq!(
+            execute_day(18, day18, default_input)?,
+            (66993, 177243763226648)
+        );
         Ok(())
     }
 }
