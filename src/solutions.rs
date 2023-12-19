@@ -1635,63 +1635,61 @@ pub fn day19(input: &str) -> Result<(usize, usize)> {
         Reject,
     }
     enum Comparator {
-        GreaterThan,
-        LessThan,
+        GreaterThan(u16),
+        LessThan(u16),
     }
 
     struct Rule<'a> {
-        variable: Variable,
-        comparator: Comparator,
-        n: u16,
+        comparison: Option<(Variable, Comparator)>,
         outcome: Outcome<'a>,
     }
     impl Rule<'_> {
         fn outcome(&self, values: [u16; 4]) -> Option<Outcome> {
-            let val = values[self.variable as usize];
-            match self.comparator {
-                Comparator::GreaterThan => val > self.n,
-                Comparator::LessThan => val < self.n,
+            if let Some((var, cmp)) = &self.comparison {
+                let val = values[*var as usize];
+                match cmp {
+                    Comparator::GreaterThan(n) => val > *n,
+                    Comparator::LessThan(n) => val < *n,
+                }
+                .then_some(self.outcome)
+            } else {
+                Some(self.outcome)
             }
-            .then_some(self.outcome)
         }
         fn calculate_total_accepts(
             &self,
             mut ranges: [RangeInclusive<u16>; 4],
             workflows: &FxHashMap<&str, Workflow>,
         ) -> usize {
-            ranges[self.variable as usize] =
-                range_intersect(&ranges[self.variable as usize], &self.hit_range());
+            if let Some((var, hit_range)) = self.hit_range() {
+                ranges[var as usize] = range_intersect(&ranges[var as usize], &hit_range);
+            }
             match self.outcome {
                 Outcome::Workflow(wf) => workflows[wf].calculate_total_accepts(ranges, workflows),
                 Outcome::Accept => ranges.iter().map(|x| x.len()).product::<usize>(),
                 Outcome::Reject => 0,
             }
         }
-        fn hit_range(&self) -> RangeInclusive<u16> {
-            match self.comparator {
-                Comparator::GreaterThan => self.n + 1..=4000,
-                Comparator::LessThan => 1..=self.n - 1,
-            }
+        fn hit_range(&self) -> Option<(Variable, RangeInclusive<u16>)> {
+            self.comparison.as_ref().map(|(var, cmp)| match cmp {
+                Comparator::GreaterThan(n) => (*var, n + 1..=4000),
+                Comparator::LessThan(n) => (*var, 1..=n - 1),
+            })
         }
-        fn non_hit_range(&self) -> RangeInclusive<u16> {
-            match self.comparator {
-                Comparator::LessThan => self.n..=4000,
-                Comparator::GreaterThan => 1..=self.n,
-            }
+        fn non_hit_range(&self) -> Option<(Variable, RangeInclusive<u16>)> {
+            self.comparison.as_ref().map(|(var, cmp)| match cmp {
+                Comparator::LessThan(n) => (*var, *n..=4000),
+                Comparator::GreaterThan(n) => (*var, 1..=*n),
+            })
         }
     }
 
     struct Workflow<'a> {
         rules: Vec<Rule<'a>>,
-        default: Outcome<'a>,
     }
     impl Workflow<'_> {
         fn accepts(&self, values: [u16; 4], workflows: &FxHashMap<&str, Workflow>) -> bool {
-            let outcome = self
-                .rules
-                .iter()
-                .find_map(|r| r.outcome(values))
-                .unwrap_or(self.default);
+            let outcome = self.rules.iter().find_map(|r| r.outcome(values)).unwrap();
             match outcome {
                 Outcome::Workflow(wf) => workflows[wf].accepts(values, workflows),
                 Outcome::Accept => true,
@@ -1707,14 +1705,10 @@ pub fn day19(input: &str) -> Result<(usize, usize)> {
             let mut sum = 0;
             for r in &self.rules {
                 sum += r.calculate_total_accepts(ranges.clone(), workflows);
-                ranges[r.variable as usize] =
-                    range_intersect(&ranges[r.variable as usize], &r.non_hit_range());
+                if let Some((var, non_hit_range)) = r.non_hit_range() {
+                    ranges[var as usize] = range_intersect(&ranges[var as usize], &non_hit_range);
+                }
             }
-            sum += match self.default {
-                Outcome::Workflow(wf) => workflows[wf].calculate_total_accepts(ranges, workflows),
-                Outcome::Accept => ranges.iter().map(|x| x.len()).product::<usize>(),
-                Outcome::Reject => 0,
-            };
             sum
         }
     }
@@ -1730,7 +1724,6 @@ pub fn day19(input: &str) -> Result<(usize, usize)> {
 
         if parsing_workflows {
             let (name, rules_str) = l.trim_end_matches('}').split_once('{').unwrap();
-            let mut default = Outcome::Reject;
             let mut rules = Vec::new();
             for rule_str in rules_str.split(',') {
                 if let Some((cond, result)) = rule_str.split_once(':') {
@@ -1742,32 +1735,34 @@ pub fn day19(input: &str) -> Result<(usize, usize)> {
                         b's' => Variable::S,
                         _ => unreachable!(),
                     };
+                    let n = cond_str[2..].parse_usize() as u16;
                     let comparator = match cond_str[1] {
-                        b'>' => Comparator::GreaterThan,
-                        b'<' => Comparator::LessThan,
+                        b'>' => Comparator::GreaterThan(n),
+                        b'<' => Comparator::LessThan(n),
                         _ => unreachable!(),
                     };
-                    let n = cond_str[2..].parse_usize() as u16;
                     let outcome = match result {
                         "A" => Outcome::Accept,
                         "R" => Outcome::Reject,
                         rule => Outcome::Workflow(rule),
                     };
                     rules.push(Rule {
-                        variable,
-                        comparator,
-                        n,
+                        comparison: Some((variable, comparator)),
                         outcome,
                     })
                 } else {
-                    default = match rule_str {
+                    let outcome = match rule_str {
                         "A" => Outcome::Accept,
                         "R" => Outcome::Reject,
                         rule => Outcome::Workflow(rule),
-                    }
+                    };
+                    rules.push(Rule {
+                        comparison: None,
+                        outcome,
+                    });
                 }
             }
-            workflows.insert(name, Workflow { rules, default });
+            workflows.insert(name, Workflow { rules });
         } else {
             let mut values = l
                 .trim_matches(['{', '}'])
