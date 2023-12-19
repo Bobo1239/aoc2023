@@ -6,7 +6,7 @@ use std::{
     hash::Hasher,
     iter,
     num::Wrapping,
-    ops::Range,
+    ops::{Range, RangeInclusive},
     sync::atomic::{self, AtomicUsize},
     usize,
 };
@@ -1616,6 +1616,173 @@ pub fn day18(input: &str) -> Result<(usize, usize)> {
     ))
 }
 
+pub fn day19(input: &str) -> Result<(usize, usize)> {
+    fn range_intersect(a: &RangeInclusive<u16>, b: &RangeInclusive<u16>) -> RangeInclusive<u16> {
+        (*a.start()).max(*b.start())..=(*a.end()).min(*b.end())
+    }
+
+    #[derive(Clone, Copy)]
+    enum Variable {
+        X = 0,
+        M,
+        A,
+        S,
+    }
+    #[derive(Debug, Clone, Copy)]
+    enum Outcome<'a> {
+        Workflow(&'a str),
+        Accept,
+        Reject,
+    }
+    enum Comparator {
+        GreaterThan,
+        LessThan,
+    }
+
+    struct Rule<'a> {
+        variable: Variable,
+        comparator: Comparator,
+        n: u16,
+        outcome: Outcome<'a>,
+    }
+    impl Rule<'_> {
+        fn outcome(&self, values: [u16; 4]) -> Option<Outcome> {
+            let val = values[self.variable as usize];
+            match self.comparator {
+                Comparator::GreaterThan => val > self.n,
+                Comparator::LessThan => val < self.n,
+            }
+            .then_some(self.outcome)
+        }
+        fn calculate_total_accepts(
+            &self,
+            mut ranges: [RangeInclusive<u16>; 4],
+            workflows: &FxHashMap<&str, Workflow>,
+        ) -> usize {
+            ranges[self.variable as usize] =
+                range_intersect(&ranges[self.variable as usize], &self.hit_range());
+            match self.outcome {
+                Outcome::Workflow(wf) => workflows[wf].calculate_total_accepts(ranges, workflows),
+                Outcome::Accept => ranges.iter().map(|x| x.len()).product::<usize>(),
+                Outcome::Reject => 0,
+            }
+        }
+        fn hit_range(&self) -> RangeInclusive<u16> {
+            match self.comparator {
+                Comparator::GreaterThan => self.n + 1..=4000,
+                Comparator::LessThan => 1..=self.n - 1,
+            }
+        }
+        fn non_hit_range(&self) -> RangeInclusive<u16> {
+            match self.comparator {
+                Comparator::LessThan => self.n..=4000,
+                Comparator::GreaterThan => 1..=self.n,
+            }
+        }
+    }
+
+    struct Workflow<'a> {
+        rules: Vec<Rule<'a>>,
+        default: Outcome<'a>,
+    }
+    impl Workflow<'_> {
+        fn accepts(&self, values: [u16; 4], workflows: &FxHashMap<&str, Workflow>) -> bool {
+            let outcome = self
+                .rules
+                .iter()
+                .find_map(|r| r.outcome(values))
+                .unwrap_or(self.default);
+            match outcome {
+                Outcome::Workflow(wf) => workflows[wf].accepts(values, workflows),
+                Outcome::Accept => true,
+                Outcome::Reject => false,
+            }
+        }
+
+        fn calculate_total_accepts(
+            &self,
+            mut ranges: [RangeInclusive<u16>; 4],
+            workflows: &FxHashMap<&str, Workflow>,
+        ) -> usize {
+            let mut sum = 0;
+            for r in &self.rules {
+                sum += r.calculate_total_accepts(ranges.clone(), workflows);
+                ranges[r.variable as usize] =
+                    range_intersect(&ranges[r.variable as usize], &r.non_hit_range());
+            }
+            sum += match self.default {
+                Outcome::Workflow(wf) => workflows[wf].calculate_total_accepts(ranges, workflows),
+                Outcome::Accept => ranges.iter().map(|x| x.len()).product::<usize>(),
+                Outcome::Reject => 0,
+            };
+            sum
+        }
+    }
+
+    let mut workflows = FxHashMap::default();
+    let mut parsing_workflows = true;
+    let mut part1 = 0;
+    for l in input.lines() {
+        if l.is_empty() {
+            parsing_workflows = false;
+            continue;
+        }
+
+        if parsing_workflows {
+            let (name, rules_str) = l.trim_end_matches('}').split_once('{').unwrap();
+            let mut default = Outcome::Reject;
+            let mut rules = Vec::new();
+            for rule_str in rules_str.split(',') {
+                if let Some((cond, result)) = rule_str.split_once(':') {
+                    let cond_str = cond.as_bytes();
+                    let variable = match cond_str[0] {
+                        b'x' => Variable::X,
+                        b'm' => Variable::M,
+                        b'a' => Variable::A,
+                        b's' => Variable::S,
+                        _ => unreachable!(),
+                    };
+                    let comparator = match cond_str[1] {
+                        b'>' => Comparator::GreaterThan,
+                        b'<' => Comparator::LessThan,
+                        _ => unreachable!(),
+                    };
+                    let n = cond_str[2..].parse_usize() as u16;
+                    let outcome = match result {
+                        "A" => Outcome::Accept,
+                        "R" => Outcome::Reject,
+                        rule => Outcome::Workflow(rule),
+                    };
+                    rules.push(Rule {
+                        variable,
+                        comparator,
+                        n,
+                        outcome,
+                    })
+                } else {
+                    default = match rule_str {
+                        "A" => Outcome::Accept,
+                        "R" => Outcome::Reject,
+                        rule => Outcome::Workflow(rule),
+                    }
+                }
+            }
+            workflows.insert(name, Workflow { rules, default });
+        } else {
+            let mut values = l
+                .trim_matches(['{', '}'])
+                .split(',')
+                .map(|val| val[2..].as_bytes().parse_usize() as u16);
+            let values: [_; 4] = array::from_fn(|_| values.next().unwrap());
+            if workflows["in"].accepts(values, &workflows) {
+                part1 += values.iter().sum::<u16>() as usize;
+            }
+        }
+    }
+    let part2 = workflows["in"].calculate_total_accepts(array::from_fn(|_| 1..=4000), &workflows);
+    Ok((part1, part2))
+}
+
 #[cfg(test)]
 mod tests {
     use std::fmt::Display;
@@ -1987,6 +2154,15 @@ mod tests {
         assert_eq!(
             execute_day(18, day18, default_input)?,
             (66993, 177243763226648)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_day19() -> Result<()> {
+        assert_eq!(
+            execute_day(19, day19, default_input)?,
+            (332145, 136661579897555)
         );
         Ok(())
     }

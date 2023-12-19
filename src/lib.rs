@@ -12,6 +12,7 @@ pub type FxIndexMap<K, V> = IndexMap<K, V, BuildHasherDefault<FxHasher>>;
 pub type FxIndexSet<T> = IndexSet<T, BuildHasherDefault<FxHasher>>;
 
 type SolutionFn = fn(&str) -> Result<(usize, usize)>;
+// Aggregated here (instead of main.rs) since our benchmarks also need this list
 pub static ALL_SOLUTIONS: &[SolutionFn] = &[
     day1,
     day2,
@@ -31,6 +32,7 @@ pub static ALL_SOLUTIONS: &[SolutionFn] = &[
     day16::<110>,
     day17::<141>,
     day18,
+    day19,
 ];
 
 pub fn default_input(n: usize) -> String {
