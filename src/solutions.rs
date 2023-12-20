@@ -1779,7 +1779,7 @@ pub fn day19(input: &str) -> Result<(usize, usize)> {
     Ok((part1, part2))
 }
 
-pub fn day20<const DO_PART2: bool>(input: &str) -> Result<(usize, usize)> {
+pub fn day20(input: &str) -> Result<(usize, usize)> {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum Pulse {
         High,
@@ -1840,6 +1840,7 @@ pub fn day20<const DO_PART2: bool>(input: &str) -> Result<(usize, usize)> {
     name_to_idx.insert("rx", 0);
     node_outputs.push("");
 
+    let mut conjunctions = Vec::new();
     for l in input.lines() {
         let node_type = match l.as_bytes()[0] {
             b'&' => NodeType::Conjunction(HashMap::new()),
@@ -1850,6 +1851,9 @@ pub fn day20<const DO_PART2: bool>(input: &str) -> Result<(usize, usize)> {
         let (name, outputs) = l[1..].split_once(" -> ").unwrap();
         node_outputs.push(outputs);
         name_to_idx.insert(name, nodes.len());
+        if matches!(node_type, NodeType::Conjunction(_)) {
+            conjunctions.push(nodes.len());
+        }
         nodes.push(Node {
             node_type,
             outputs: Vec::new(),
@@ -1870,49 +1874,34 @@ pub fn day20<const DO_PART2: bool>(input: &str) -> Result<(usize, usize)> {
         nodes[idx].outputs = vec;
     }
 
+    // Determine the sub-graph period lengths by inspecting the sub-graph
+    let mut periods = Vec::new();
+    for mut current in &nodes[name_to_idx["roadcaster"]].outputs {
+        let mut period = 0;
+        'sub_graph: for i in 0.. {
+            for c in &nodes[*current].outputs {
+                if matches!(nodes[*c].node_type, NodeType::FlipFlop(_)) {
+                    let flip = conjunctions
+                        .iter()
+                        .any(|c| nodes[*c].outputs.contains(current));
+                    if !flip {
+                        period |= 1 << i;
+                    }
+                    current = c;
+                    continue 'sub_graph;
+                }
+            }
+            break;
+        }
+        periods.push((1 << 11) + period + 1);
+    }
+
     let mut counts = (0, 0);
-    // NOTE: Instead of simulating until we've found the cycle times of each of the subgraphs we
-    //       could also just derive those values from the graph structure.
-    let final_count_nodes = if DO_PART2 {
-        let mut final_count_nodes = Vec::new();
-        let final_conj_node_idx = nodes
-            .iter()
-            .enumerate()
-            .find(|(_, n)| n.outputs == [0])
-            .unwrap()
-            .0;
-        for (i, node) in nodes.iter().enumerate() {
-            if node.outputs == [final_conj_node_idx] {
-                final_count_nodes.push(i);
-            }
-        }
-        final_count_nodes
-    } else {
-        vec![]
-    };
-    let mut cycle_times = vec![];
-    let mut found_cycle_times = 0;
-
-    let mut part1 = 0;
     let mut signal_queue = VecDeque::new();
-    'outer: for i in 0.. {
-        if i == 1000 {
-            part1 = counts.0 * counts.1;
-            if !DO_PART2 {
-                break;
-            }
-        }
-
+    for _ in 0..1000 {
         // `b` is skipped by parser...
         signal_queue.push_back((usize::MAX, Pulse::Low, name_to_idx["roadcaster"]));
         while let Some((src_idx, pulse, dst_idx)) = signal_queue.pop_front() {
-            if pulse == Pulse::Low && final_count_nodes.contains(&dst_idx) {
-                cycle_times.push(i + 1);
-                found_cycle_times += 1;
-                if found_cycle_times == final_count_nodes.len() {
-                    break 'outer;
-                }
-            }
             match pulse {
                 Pulse::Low => counts.0 += 1,
                 Pulse::High => counts.1 += 1,
@@ -1921,7 +1910,8 @@ pub fn day20<const DO_PART2: bool>(input: &str) -> Result<(usize, usize)> {
         }
     }
 
-    let part2 = cycle_times.iter().fold(1, |a, b| a.lcm(b));
+    let part1 = counts.0 * counts.1;
+    let part2 = periods.iter().fold(1, |a, b| a.lcm(b));
     Ok((part1, part2))
 }
 
@@ -2318,9 +2308,9 @@ mod tests {
             %c -> inv
             &inv -> a
         "};
-        assert_eq!(execute_day_input(day20::<false>, example)?.0, 32000000);
+        assert_eq!(execute_day_input(day20, example)?.0, 32000000);
         assert_eq!(
-            execute_day(20, day20::<true>, default_input)?,
+            execute_day(20, day20, default_input)?,
             (879834312, 243037165713371)
         );
         Ok(())
