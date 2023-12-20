@@ -1927,23 +1927,6 @@ pub fn day20<const DO_PART2: bool>(input: &str) -> Result<(usize, usize)> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn test_day20() -> Result<()> {
-        let example = indoc! {"
-            broadcaster -> a, b, c
-            %a -> b
-            %b -> c
-            %c -> inv
-            &inv -> a
-        "};
-        assert_eq!(execute_day_input(day20::<false>, example)?.0, 32000000);
-        assert_eq!(
-            execute_day(20, day20::<true>, default_input)?,
-            (879834312, 243037165713371)
-        );
-        Ok(())
-    }
-
     use std::fmt::Display;
 
     use indoc::indoc;
@@ -2322,6 +2305,23 @@ mod tests {
         assert_eq!(
             execute_day(19, day19, default_input)?,
             (332145, 136661579897555)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_day20() -> Result<()> {
+        let example = indoc! {"
+            broadcaster -> a, b, c
+            %a -> b
+            %b -> c
+            %c -> inv
+            &inv -> a
+        "};
+        assert_eq!(execute_day_input(day20::<false>, example)?.0, 32000000);
+        assert_eq!(
+            execute_day(20, day20::<true>, default_input)?,
+            (879834312, 243037165713371)
         );
         Ok(())
     }
