@@ -36,7 +36,7 @@ pub static ALL_SOLUTIONS: &[SolutionFn] = &[
     day20,
 ];
 
-pub fn default_input(n: usize) -> String {
+pub fn read_day_input(n: usize) -> String {
     std::fs::read_to_string(format!("inputs/{}.txt", n)).unwrap()
 }
 

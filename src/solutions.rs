@@ -1924,19 +1924,11 @@ mod tests {
     use super::*;
     use crate::*;
 
-    fn execute_day<I: ?Sized, J: AsRef<I>, S: Display, T: Display>(
+    fn execute_day<S: Display, T: Display>(
         n: usize,
-        f: fn(&I) -> Result<(S, T)>,
-        input_loader: fn(usize) -> J,
+        f: fn(&str) -> Result<(S, T)>,
     ) -> Result<(S, T)> {
-        f(input_loader(n).as_ref())
-    }
-
-    fn execute_day_input<I: ?Sized, S: Display, T: Display>(
-        f: fn(&I) -> Result<(S, T)>,
-        input: &I,
-    ) -> Result<(S, T)> {
-        f(input)
+        f(&read_day_input(n))
     }
 
     #[test]
@@ -1950,27 +1942,27 @@ mod tests {
             zoneight234
             7pqrstsixteen
         "};
-        assert_eq!(execute_day_input(day1, example_part2)?.1, 281);
-        assert_eq!(execute_day_input(day1, "twone\n")?.1, 21);
-        assert_eq!(execute_day(1, day1, default_input)?, (54916, 54728));
+        assert_eq!(day1(example_part2)?.1, 281);
+        assert_eq!(day1("twone\n")?.1, 21);
+        assert_eq!(execute_day(1, day1)?, (54916, 54728));
         Ok(())
     }
 
     #[test]
     fn test_day2() -> Result<()> {
-        assert_eq!(execute_day(2, day2, default_input)?, (2207, 62241));
+        assert_eq!(execute_day(2, day2)?, (2207, 62241));
         Ok(())
     }
 
     #[test]
     fn test_day3() -> Result<()> {
-        assert_eq!(execute_day(3, day3, default_input)?, (535351, 87287096));
+        assert_eq!(execute_day(3, day3)?, (535351, 87287096));
         Ok(())
     }
 
     #[test]
     fn test_day4() -> Result<()> {
-        assert_eq!(execute_day(4, day4, default_input)?, (23941, 5571760));
+        assert_eq!(execute_day(4, day4)?, (23941, 5571760));
         Ok(())
     }
 
@@ -2011,14 +2003,14 @@ mod tests {
             60 56 37
             56 93 4
         "};
-        assert_eq!(execute_day_input(day5, example)?, (35, 46));
-        assert_eq!(execute_day(5, day5, default_input)?, (510109797, 9622622));
+        assert_eq!(day5(example)?, (35, 46));
+        assert_eq!(execute_day(5, day5)?, (510109797, 9622622));
         Ok(())
     }
 
     #[test]
     fn test_day6() -> Result<()> {
-        assert_eq!(execute_day(6, day6, default_input)?, (1083852, 23501589));
+        assert_eq!(execute_day(6, day6)?, (1083852, 23501589));
         Ok(())
     }
 
@@ -2037,18 +2029,15 @@ mod tests {
             JJ223 100
             JJ234 1000
         "};
-        assert_eq!(execute_day_input(day7, example)?, (6440, 5905));
-        assert_eq!(execute_day_input(day7, jokers)?.1, 1234);
-        assert_eq!(execute_day(7, day7, default_input)?, (241344943, 243101568));
+        assert_eq!(day7(example)?, (6440, 5905));
+        assert_eq!(day7(jokers)?.1, 1234);
+        assert_eq!(execute_day(7, day7)?, (241344943, 243101568));
         Ok(())
     }
 
     #[test]
     fn test_day8() -> Result<()> {
-        assert_eq!(
-            execute_day(8, day8, default_input)?,
-            (18023, 14449445933179)
-        );
+        assert_eq!(execute_day(8, day8)?, (18023, 14449445933179));
         Ok(())
     }
 
@@ -2059,8 +2048,8 @@ mod tests {
             1 3 6 10 15 21
             10 13 16 21 30 45
         "};
-        assert_eq!(execute_day_input(day9, example)?, (114, 2));
-        assert_eq!(execute_day(9, day9, default_input)?, (1938800261, 1112));
+        assert_eq!(day9(example)?, (114, 2));
+        assert_eq!(execute_day(9, day9)?, (1938800261, 1112));
         Ok(())
     }
 
@@ -2113,11 +2102,11 @@ mod tests {
         "}
         .to_string()
             + &(".".repeat(20) + "\n").repeat(10);
-        assert_eq!(execute_day_input(day10::<5>, example1)?, (4, 1));
-        assert_eq!(execute_day_input(day10::<10>, example2)?.1, 4);
-        assert_eq!(execute_day_input(day10::<20>, &example3)?.1, 8);
-        assert_eq!(execute_day_input(day10::<20>, &example4)?.1, 10);
-        assert_eq!(execute_day(10, day10::<140>, default_input)?, (6733, 435));
+        assert_eq!(day10::<5>(example1)?, (4, 1));
+        assert_eq!(day10::<10>(example2)?.1, 4);
+        assert_eq!(day10::<20>(&example3)?.1, 8);
+        assert_eq!(day10::<20>(&example4)?.1, 10);
+        assert_eq!(execute_day(10, day10::<140>)?, (6733, 435));
         Ok(())
     }
 
@@ -2135,9 +2124,9 @@ mod tests {
             .......#..
             #...#.....
         "};
-        assert_eq!(execute_day_input(day11::<10, 100>, example)?, (374, 8410));
+        assert_eq!(day11::<10, 100>(example)?, (374, 8410));
         assert_eq!(
-            execute_day(11, day11::<140, 1000000>, default_input)?,
+            execute_day(11, day11::<140, 1000000>)?,
             (9233514, 363293506944)
         );
         Ok(())
@@ -2159,12 +2148,9 @@ mod tests {
         for (example, expected) in examples {
             println!("-----------");
             println!("Example: {}", example);
-            assert_eq!(execute_day_input(day12, example)?, expected);
+            assert_eq!(day12(example)?, expected);
         }
-        assert_eq!(
-            execute_day(12, day12, default_input)?,
-            (7674, 4443895258186)
-        );
+        assert_eq!(execute_day(12, day12)?, (7674, 4443895258186));
         Ok(())
     }
 
@@ -2187,8 +2173,8 @@ mod tests {
             ..##..###
             #....#..#
         "};
-        assert_eq!(execute_day_input(day13, example)?, (405, 400));
-        assert_eq!(execute_day(13, day13, default_input)?, (41859, 30842));
+        assert_eq!(day13(example)?, (405, 400));
+        assert_eq!(execute_day(13, day13)?, (41859, 30842));
         Ok(())
     }
 
@@ -2206,19 +2192,16 @@ mod tests {
             #....###..
             #OO..#....
         "};
-        assert_eq!(execute_day_input(day14::<10>, example)?, (136, 64));
-        assert_eq!(
-            execute_day(14, day14::<100>, default_input)?,
-            (109596, 96105)
-        );
+        assert_eq!(day14::<10>(example)?, (136, 64));
+        assert_eq!(execute_day(14, day14::<100>)?, (109596, 96105));
         Ok(())
     }
 
     #[test]
     fn test_day15() -> Result<()> {
         let example = "rn=1,cm-,qp=3,cm=2,qp-,pc=4,ot=9,ab=5,pc-,pc=6,ot=7\n";
-        assert_eq!(execute_day_input(day15, example)?, (1320, 145));
-        assert_eq!(execute_day(15, day15, default_input)?, (517315, 247763));
+        assert_eq!(day15(example)?, (1320, 145));
+        assert_eq!(execute_day(15, day15)?, (517315, 247763));
         Ok(())
     }
 
@@ -2236,8 +2219,8 @@ mod tests {
             .|....-|.\
             ..//.|....
         "};
-        assert_eq!(execute_day_input(day16::<10>, example)?, (46, 51));
-        assert_eq!(execute_day(16, day16::<110>, default_input)?, (8098, 8335));
+        assert_eq!(day16::<10>(example)?, (46, 51));
+        assert_eq!(execute_day(16, day16::<110>)?, (8098, 8335));
         Ok(())
     }
 
@@ -2259,8 +2242,8 @@ mod tests {
             4322674655533
         "};
 
-        assert_eq!(execute_day_input(day17::<13>, example)?, (102, 94));
-        assert_eq!(execute_day(17, day17::<141>, default_input)?, (902, 1073));
+        assert_eq!(day17::<13>(example)?, (102, 94));
+        assert_eq!(execute_day(17, day17::<141>)?, (902, 1073));
         Ok(())
     }
 
@@ -2282,20 +2265,14 @@ mod tests {
             L 2 (#015232)
             U 2 (#7a21e3)
         "};
-        assert_eq!(execute_day_input(day18, example)?, (62, 952408144115));
-        assert_eq!(
-            execute_day(18, day18, default_input)?,
-            (66993, 177243763226648)
-        );
+        assert_eq!(day18(example)?, (62, 952408144115));
+        assert_eq!(execute_day(18, day18)?, (66993, 177243763226648));
         Ok(())
     }
 
     #[test]
     fn test_day19() -> Result<()> {
-        assert_eq!(
-            execute_day(19, day19, default_input)?,
-            (332145, 136661579897555)
-        );
+        assert_eq!(execute_day(19, day19)?, (332145, 136661579897555));
         Ok(())
     }
 
@@ -2308,11 +2285,8 @@ mod tests {
             %c -> inv
             &inv -> a
         "};
-        assert_eq!(execute_day_input(day20, example)?.0, 32000000);
-        assert_eq!(
-            execute_day(20, day20, default_input)?,
-            (879834312, 243037165713371)
-        );
+        assert_eq!(day20(example)?.0, 32000000);
+        assert_eq!(execute_day(20, day20)?, (879834312, 243037165713371));
         Ok(())
     }
 }

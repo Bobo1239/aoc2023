@@ -1,12 +1,12 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use aoc2023::{default_input, ALL_SOLUTIONS};
+use aoc2023::{read_day_input, ALL_SOLUTIONS};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     rayon::ThreadPoolBuilder::new().build_global().unwrap();
     for (i, day) in ALL_SOLUTIONS.iter().enumerate() {
         c.bench_function(&format!("day{}", i + 1), |b| {
-            let input = default_input(i + 1);
+            let input = read_day_input(i + 1);
             b.iter(|| day(&input))
         });
     }

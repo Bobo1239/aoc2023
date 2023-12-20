@@ -13,7 +13,7 @@ fn main() -> Result<()> {
 
     let mut timings = Vec::new();
     for (day, day_fn) in ALL_SOLUTIONS.iter().enumerate() {
-        let time = execute_day(day + 1, *day_fn, aoc2023::default_input)?;
+        let time = execute_day(day + 1, *day_fn)?;
         timings.push((day, time));
     }
 
@@ -35,14 +35,12 @@ fn format_duration(dur: &Duration) -> String {
     }
 }
 
-// TODO: Simplify
-fn execute_day<I: ?Sized, J: AsRef<I>, S: Display, T: Display>(
+fn execute_day<S: Display, T: Display>(
     n: usize,
-    f: fn(&I) -> Result<(S, T)>,
-    input_loader: fn(usize) -> J,
+    f: fn(&str) -> Result<(S, T)>,
 ) -> Result<Duration> {
     println!("Day {}:", n);
-    let input = input_loader(n);
+    let input = aoc2023::read_day_input(n);
 
     let start = Instant::now();
     let (part1, part2) = f(input.as_ref())?;
