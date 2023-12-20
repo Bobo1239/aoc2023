@@ -33,6 +33,7 @@ pub static ALL_SOLUTIONS: &[SolutionFn] = &[
     day17::<141>,
     day18,
     day19,
+    day20::<true>,
 ];
 
 pub fn default_input(n: usize) -> String {

@@ -3,6 +3,7 @@
 use std::{
     array,
     cmp::Ordering,
+    collections::{HashMap, VecDeque},
     hash::Hasher,
     iter,
     num::Wrapping,
@@ -1778,8 +1779,171 @@ pub fn day19(input: &str) -> Result<(usize, usize)> {
     Ok((part1, part2))
 }
 
+pub fn day20<const DO_PART2: bool>(input: &str) -> Result<(usize, usize)> {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Pulse {
+        High,
+        Low,
+    }
+    #[derive(Debug)]
+    enum NodeType {
+        Broadcaster,
+        Conjunction(HashMap<usize, Pulse>),
+        FlipFlop(bool),
+        Output,
+    }
+    #[derive(Debug)]
+    struct Node {
+        node_type: NodeType,
+        outputs: Vec<usize>,
+    }
+    impl Node {
+        fn handle_pulse(
+            &mut self,
+            src_idx: usize,
+            node_idx: usize,
+            pulse: Pulse,
+            signal_queue: &mut VecDeque<(usize, Pulse, usize)>,
+        ) {
+            let output = match &mut self.node_type {
+                NodeType::Broadcaster => Some(pulse),
+                NodeType::Conjunction(saved_states) => {
+                    saved_states.insert(src_idx, pulse);
+                    Some(if saved_states.values().all(|s| *s == Pulse::High) {
+                        Pulse::Low
+                    } else {
+                        Pulse::High
+                    })
+                }
+                NodeType::FlipFlop(state) if pulse == Pulse::Low => {
+                    *state = !*state;
+                    Some(if *state { Pulse::High } else { Pulse::Low })
+                }
+                _ => None,
+            };
+            if let Some(pulse) = output {
+                for out_idx in &self.outputs {
+                    signal_queue.push_back((node_idx, pulse, *out_idx));
+                }
+            }
+        }
+    }
+
+    let mut nodes = Vec::new();
+    let mut name_to_idx = FxHashMap::default();
+    let mut node_outputs = Vec::new();
+
+    nodes.push(Node {
+        node_type: NodeType::Output,
+        outputs: Vec::new(),
+    });
+    name_to_idx.insert("rx", 0);
+    node_outputs.push("");
+
+    for l in input.lines() {
+        let node_type = match l.as_bytes()[0] {
+            b'&' => NodeType::Conjunction(HashMap::new()),
+            b'%' => NodeType::FlipFlop(false),
+            b'b' => NodeType::Broadcaster,
+            _ => unreachable!(),
+        };
+        let (name, outputs) = l[1..].split_once(" -> ").unwrap();
+        node_outputs.push(outputs);
+        name_to_idx.insert(name, nodes.len());
+        nodes.push(Node {
+            node_type,
+            outputs: Vec::new(),
+        });
+    }
+    for (idx, outputs) in (0..nodes.len()).zip(node_outputs.iter()) {
+        let mut vec = Vec::new();
+        for output in outputs
+            .split(", ")
+            .filter(|o| !o.is_empty()) // Only needed for `rx` node
+            .map(|n| name_to_idx[n])
+        {
+            vec.push(output);
+            if let NodeType::Conjunction(saved_states) = &mut nodes[output].node_type {
+                saved_states.insert(idx, Pulse::Low);
+            }
+        }
+        nodes[idx].outputs = vec;
+    }
+
+    let mut counts = (0, 0);
+    // NOTE: Instead of simulating until we've found the cycle times of each of the subgraphs we
+    //       could also just derive those values from the graph structure.
+    let final_count_nodes = if DO_PART2 {
+        let mut final_count_nodes = Vec::new();
+        let final_conj_node_idx = nodes
+            .iter()
+            .enumerate()
+            .find(|(_, n)| n.outputs == [0])
+            .unwrap()
+            .0;
+        for (i, node) in nodes.iter().enumerate() {
+            if node.outputs == [final_conj_node_idx] {
+                final_count_nodes.push(i);
+            }
+        }
+        final_count_nodes
+    } else {
+        vec![]
+    };
+    let mut cycle_times = vec![];
+    let mut found_cycle_times = 0;
+
+    let mut part1 = 0;
+    let mut signal_queue = VecDeque::new();
+    'outer: for i in 0.. {
+        if i == 1000 {
+            part1 = counts.0 * counts.1;
+            if !DO_PART2 {
+                break;
+            }
+        }
+
+        // `b` is skipped by parser...
+        signal_queue.push_back((usize::MAX, Pulse::Low, name_to_idx["roadcaster"]));
+        while let Some((src_idx, pulse, dst_idx)) = signal_queue.pop_front() {
+            if pulse == Pulse::Low && final_count_nodes.contains(&dst_idx) {
+                cycle_times.push(i + 1);
+                found_cycle_times += 1;
+                if found_cycle_times == final_count_nodes.len() {
+                    break 'outer;
+                }
+            }
+            match pulse {
+                Pulse::Low => counts.0 += 1,
+                Pulse::High => counts.1 += 1,
+            }
+            nodes[dst_idx].handle_pulse(src_idx, dst_idx, pulse, &mut signal_queue);
+        }
+    }
+
+    let part2 = cycle_times.iter().fold(1, |a, b| a.lcm(b));
+    Ok((part1, part2))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_day20() -> Result<()> {
+        let example = indoc! {"
+            broadcaster -> a, b, c
+            %a -> b
+            %b -> c
+            %c -> inv
+            &inv -> a
+        "};
+        assert_eq!(execute_day_input(day20::<false>, example)?.0, 32000000);
+        assert_eq!(
+            execute_day(20, day20::<true>, default_input)?,
+            (879834312, 243037165713371)
+        );
+        Ok(())
+    }
+
     use std::fmt::Display;
 
     use indoc::indoc;
