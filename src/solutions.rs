@@ -17,7 +17,7 @@ use anyhow::Result;
 use num::Integer;
 use rayon::prelude::*;
 use regex::bytes::Regex;
-use rustc_hash::{FxHashMap, FxHasher};
+use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 
 use crate::{AsciiByteSliceExt, FxIndexMap};
 
@@ -1915,6 +1915,98 @@ pub fn day20(input: &str) -> Result<(usize, usize)> {
     Ok((part1, part2))
 }
 
+pub fn day21(input: &str) -> Result<(usize, usize)> {
+    // TODO: Clean solution is still WIP... (see wip branch)
+    Ok((0, 0))
+}
+
+pub fn day22(input: &str) -> Result<(usize, usize)> {
+    let mut max_z = [[(0, usize::MAX); 10]; 10];
+    let mut dependencies = Vec::new();
+    let mut blocks = Vec::new();
+    for l in input.lines() {
+        let (from, to) = l.split_once('~').unwrap();
+        let mut from = from.split(',').map(|n| n.as_bytes().parse_usize());
+        let from: [_; 3] = std::array::from_fn(|_| from.next().unwrap());
+        let mut to = to.split(',').map(|n| n.as_bytes().parse_usize());
+        let to: [_; 3] = std::array::from_fn(|_| to.next().unwrap());
+        blocks.push((from, to));
+    }
+    blocks.sort_unstable_by_key(|x| x.0[2].min(x.1[2]));
+
+    for (from, to) in blocks {
+        let height = from[2].max(to[2]) - from[2].min(to[2]) + 1;
+
+        let mut depends_on = FxHashSet::default();
+        let mut z_bot = 0;
+        for x in from[0]..to[0] + 1 {
+            for y in from[1]..to[1] + 1 {
+                let (xy_max_z, id) = max_z[x][y];
+                match xy_max_z.cmp(&z_bot) {
+                    Ordering::Less => {}
+                    Ordering::Equal => {
+                        if id != usize::MAX {
+                            depends_on.insert(id);
+                        }
+                    }
+                    Ordering::Greater => {
+                        if id != usize::MAX {
+                            depends_on = FxHashSet::default();
+                            depends_on.insert(id);
+                        }
+                        z_bot = xy_max_z;
+                    }
+                }
+            }
+        }
+        for x in from[0]..to[0] + 1 {
+            for y in from[1]..to[1] + 1 {
+                max_z[x][y] = (z_bot + height, dependencies.len());
+            }
+        }
+        dependencies.push(depends_on);
+    }
+
+    // Backward edges
+    let mut dependants = vec![Vec::new(); dependencies.len()];
+    for (id, deps) in dependencies.iter().enumerate() {
+        for d in deps {
+            dependants[*d].push(id);
+        }
+    }
+
+    let mut part1 = dependencies.len();
+    for deps in &dependants {
+        for d in deps {
+            if dependencies[*d].len() == 1 {
+                part1 -= 1;
+                break;
+            }
+        }
+    }
+
+    fn count_subgraph_nodes(
+        i: usize,
+        dependencies: &[FxHashSet<usize>],
+        dependants: &[Vec<usize>],
+        marked: &mut FxHashSet<usize>,
+    ) -> usize {
+        marked.insert(i);
+        for dep in &dependants[i] {
+            if dependencies[*dep].difference(marked).next().is_none() {
+                count_subgraph_nodes(*dep, dependencies, dependants, marked);
+            }
+        }
+        marked.len() - 1
+    }
+
+    let part2 = (0..dependencies.len())
+        .into_par_iter()
+        .map(|i| count_subgraph_nodes(i, &dependencies, &dependants, &mut FxHashSet::default()))
+        .sum();
+    Ok((part1, part2))
+}
+
 #[cfg(test)]
 mod tests {
     use std::fmt::Display;
@@ -2287,6 +2379,22 @@ mod tests {
         "};
         assert_eq!(day20(example)?.0, 32000000);
         assert_eq!(execute_day(20, day20)?, (879834312, 243037165713371));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day22() -> Result<()> {
+        let example = indoc! {"
+            1,0,1~1,2,1
+            0,0,2~2,0,2
+            0,2,3~2,2,3
+            0,0,4~0,2,4
+            2,0,5~2,2,5
+            0,1,6~2,1,6
+            1,1,8~1,1,9
+        "};
+        assert_eq!(day22(example)?, (5, 7));
+        assert_eq!(execute_day(22, day22)?, (398, 70727));
         Ok(())
     }
 }
