@@ -1915,6 +1915,9 @@ pub fn day20(input: &str) -> Result<(usize, usize)> {
     Ok((part1, part2))
 }
 
+// TODO: Other strategy: Do a 3x3 grid of grids; Simulate for that (adjusting parity) so the outer
+//       grids have the same parity as in the large case (parity is the same across all); then
+//       count the marked fields in each of border grids and apply some math for solution
 pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: u16, const MAX_STEPS2: usize>(
     input: &str,
 ) -> Result<(usize, usize)> {
@@ -2130,7 +2133,7 @@ pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: u16, const MAX_STEPS2: us
         // if GRID_SIZE == 131 {
         //     ret - n
         // } else {
-            ret
+        ret
         // }
     };
 
