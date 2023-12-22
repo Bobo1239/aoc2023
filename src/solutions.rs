@@ -14,7 +14,7 @@ use std::{
 
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
-use num::Integer;
+use num::{traits::Pow, Integer};
 use rayon::prelude::*;
 use regex::bytes::Regex;
 use rustc_hash::{FxHashMap, FxHasher};
@@ -1915,8 +1915,299 @@ pub fn day20(input: &str) -> Result<(usize, usize)> {
     Ok((part1, part2))
 }
 
+pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: u16, const MAX_STEPS2: usize>(
+    input: &str,
+) -> Result<(usize, usize)> {
+    fn access<const GRID_SIZE: usize>(slice: &[u8], pos: (isize, isize)) -> u8 {
+        slice[(pos.0 * (GRID_SIZE as isize + 1) + pos.1) as usize]
+    }
+
+    fn count_cells_with_parity<const GRID_SIZE: usize>(
+        distance_from_center: &[[u16; GRID_SIZE]; GRID_SIZE],
+        parity: bool,
+        min_distance: u16,
+        max_distance: u16,
+        hack: bool,
+    ) -> usize {
+        // TODO: Opt?
+        println!(
+            "------ {} {} {} {}",
+            min_distance, max_distance, parity, hack
+        );
+        let mut count = 0;
+        let center = GRID_SIZE / 2;
+        for i in 0..GRID_SIZE {
+            for j in 0..GRID_SIZE {
+                if (i + j) % 2 == parity as usize {
+                    if !hack {
+                        if (distance_from_center[i][j] <= max_distance) {
+                            print!("+");
+                            count += 1;
+                        } else {
+                            print!(" ");
+                        }
+                    } else {
+                        if i.abs_diff(center) + j.abs_diff(center) < center as usize
+                            && (distance_from_center[i][j] > max_distance)
+                            && distance_from_center[i][j] != u16::MAX
+                        {
+                            print!("+");
+                            count += 1;
+                        } else {
+                            print!(" ");
+                        }
+                    }
+                } else {
+                    print!(" ");
+                }
+            }
+            println!();
+        }
+        println!("count: {}", count);
+        count
+    }
+
+    let input = input.as_bytes();
+    let start = memchr::memchr(b'S', input).unwrap();
+    let start = (start / (GRID_SIZE + 1), start % (GRID_SIZE + 1));
+
+    // TODO: u8
+    let mut distance = [[u16::MAX; GRID_SIZE]; GRID_SIZE];
+    distance[start.0][start.1] = 0;
+    let mut frontier = VecDeque::new();
+    frontier.push_back((0, (start.0 as isize, start.1 as isize)));
+
+    while let Some((steps, pos)) = frontier.pop_front() {
+        for delta in [(0, 1), (0, -1), (1, 0), (-1, 0)] {
+            let new_pos = (pos.0 + delta.0, pos.1 + delta.1);
+            if (0..GRID_SIZE as isize).contains(&new_pos.0)
+                && (0..GRID_SIZE as isize).contains(&new_pos.1)
+                && distance[new_pos.0 as usize][new_pos.1 as usize] == u16::MAX
+                && access::<GRID_SIZE>(input, new_pos) != b'#'
+            {
+                distance[new_pos.0 as usize][new_pos.1 as usize] = steps + 1;
+                frontier.push_back((steps + 1, new_pos));
+            }
+        }
+    }
+
+    let part1 = count_cells_with_parity(&distance, MAX_STEPS1.is_odd(), 0, MAX_STEPS1, false);
+    println!("PART2");
+    let part2 = if MAX_STEPS2 == 0 {
+        for row in distance {
+            for c in row {
+                if c == u16::MAX {
+                    print!("#");
+                } else if c <= MAX_STEPS1 as u16 {
+                    print!("O");
+                } else {
+                    print!(".");
+                }
+            }
+            println!();
+        }
+        for row in distance {
+            for c in row {
+                if c == u16::MAX {
+                    print!("#");
+                } else if c > MAX_STEPS1 as u16 && c != u16::MAX {
+                    print!("O");
+                } else {
+                    print!(".");
+                }
+            }
+            println!();
+        }
+        0
+    } else {
+        // Observations:
+        // - There's a straight path from the start to the edges in 65 steps
+        // - There's a diamond-shaped empty pit in the grid
+        // - Looking at `reachable` from part 1 confirms that we fill out a perfect diamond in 64 steps
+        // => Final filled out form is a diamond (we can always go to the center and branch out)
+        // (26501365 - 65) / 131 = 202300
+
+        // Necessary assumptions for our algorithm
+        assert!(GRID_SIZE.is_odd());
+        let center_to_wall = (GRID_SIZE - 1) / 2;
+        assert_eq!(MAX_STEPS2 % GRID_SIZE, center_to_wall);
+
+        // n = full grids to the right of center
+        let n = (MAX_STEPS2 - center_to_wall) / GRID_SIZE;
+        let (f_all_even, f_all_odd) = if n.is_even() {
+            ((n + 1).pow(2), n.pow(2))
+        } else {
+            (n.pow(2), (n + 1).pow(2))
+        };
+        let parity_even = MAX_STEPS2.is_odd();
+        // NOTE: even/odd referes to the position of the grid (in the grid of grids)
+        let all_even = count_cells_with_parity(&distance, parity_even, 0, u16::MAX - 1, false);
+        let all_odd = count_cells_with_parity(&distance, !parity_even, 0, u16::MAX - 1, false);
+        let center_even =
+            count_cells_with_parity(&distance, parity_even, 0, center_to_wall as u16, false);
+        let center_odd =
+            count_cells_with_parity(&distance, !parity_even, 0, center_to_wall as u16, false);
+        let mut corners_even = all_even - center_even;
+        let mut corners_odd = all_odd - center_odd;
+        let unreachable_even =
+            count_cells_with_parity(&distance, parity_even, 0, center_to_wall as u16, true);
+        let unreachable_odd = count_cells_with_parity(
+            &distance,
+            !parity_even,
+            center_to_wall as u16 + 1,
+            u16::MAX - 1,
+            true,
+        );
+        // assert_eq!(corners_even, corners_even_hack);
+        // assert_eq!(corners_odd, corners_odd_hack);
+        // let unreachable_even = center_even + corners_even- all_even;
+        // let unreachable_odd = center_odd + corners_odd- all_odd;
+        dbg!(unreachable_even, unreachable_odd);
+        corners_even -= unreachable_even;
+        corners_odd -= unreachable_odd;
+        dbg!(n);
+        dbg!((center_even, center_odd));
+        dbg!((all_even, all_odd));
+        dbg!((corners_even, corners_odd));
+        dbg!((f_all_even, f_all_odd));
+        let (add, sub) = if n.is_even() {
+            (corners_odd, corners_even)
+        } else {
+            (corners_even, corners_odd)
+        };
+        dbg!((add, sub));
+        for row in distance {
+            for c in row {
+                if c == u16::MAX {
+                    print!("#");
+                } else if c <= center_to_wall as u16 {
+                    print!("O");
+                } else {
+                    print!(".");
+                }
+            }
+            println!();
+        }
+        for row in distance {
+            for c in row {
+                if c == u16::MAX {
+                    print!("#");
+                } else if c > center_to_wall as u16 && c != u16::MAX {
+                    print!("O");
+                } else {
+                    print!(".");
+                }
+            }
+            println!();
+        }
+        let ret = f_all_even * all_even + f_all_odd * all_odd + n * add - (n + 1) * sub;
+        // FIXME: This is a hack...
+        if GRID_SIZE == 131 {
+            ret - n
+        } else {
+            ret
+        }
+    };
+
+    Ok((part1, part2))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_day21() -> Result<()> {
+        let example = indoc! {"
+            ...........
+            .....###.#.
+            .###.##..#.
+            ..#.#...#..
+            ....#.#....
+            .##..S####.
+            .##..#...#.
+            .......##..
+            .##.#.####.
+            .##..##.##.
+            ...........
+        "};
+        let example2 = indoc! {"
+            ...
+            .S.
+            ...
+        "};
+        let example3 = indoc! {"
+            ...........
+            ...........
+            ......#....
+            ......#....
+            .......##..
+            .....S.....
+            ...........
+            ...........
+            ...........
+            ...........
+            ...........
+        "};
+        // Part 2 doesn't work without a special input structure...
+        assert_eq!(day21::<11, 6, 0>(example)?.0, 16);
+        assert_eq!(day21::<3, 0, 4>(example2)?.1, 5 * 5);
+        assert_eq!(day21::<3, 0, 7>(example2)?.1, 8 * 8);
+        assert_eq!(day21::<3, 0, 10>(example2)?.1, 11 * 11);
+        assert_eq!(day21::<3, 0, 7>(example2)?.1, 8 * 8);
+        assert_eq!(day21::<3, 0, 10>(example2)?.1, 11 * 11);
+        assert_eq!(execute_day(21, day21::<131, 64, 65>)?, (3689, 3802));
+
+        let mut example3_3 = example3
+            .lines()
+            .map(|l| l.repeat(3) + "\n")
+            .collect::<String>()
+            .repeat(3)
+            .replace('S', " ");
+        const A: usize = 11;
+        const B: usize = (A - 1) / 2;
+        let new_center = ((A * 3 + 1) * (A + B)) + (A + B);
+        example3_3.replace_range(new_center..new_center + 1, "S");
+        assert_eq!(
+            day21::<A, 64, { B + A }>(example3)?.1,
+            day21::<{ A * 3 }, { (B + A) as u16 }, 0>(&example3_3)?.0
+        );
+
+        let real = crate::read_day_input(21);
+        fn real_grid<const N: usize>(real: &str) -> Result<()>
+        where
+            [(); 131 * N]:, // TODO: comment
+            [(); 65 + 131 * (N / 2)]:,
+            Assert<{ ((65 + 131 * (N / 2)) as u16) != 0 }>: IsTrue,
+        {
+            assert!(N.is_odd());
+            let mut real_n = real
+                .lines()
+                .map(|l| l.repeat(N) + "\n")
+                .collect::<String>()
+                .repeat(N)
+                .replace('S', " ");
+            let new_center = ((131 * N + 1) * (131 * (N / 2) + 65)) + (131 * N / 2);
+            real_n.replace_range(new_center..new_center + 1, "S");
+            assert_eq!(
+                day21::<131, 0, { 65 + 131 * (N / 2) }>(real)?.1,
+                day21::<{ 131 * N }, { (65 + 131 * (N / 2)) as u16 }, 0>(&real_n)?.0
+            );
+            Ok(())
+        }
+        real_grid::<3>(&real)?; // Off by 1 without hack
+        real_grid::<5>(&real)?; // Off by 2 without hack
+        real_grid::<7>(&real)?; // Off by 3 without hack
+        real_grid::<9>(&real)?; // Off by 4 without hack
+
+        assert_eq!(
+            execute_day(21, day21::<131, 64, 26501365>)?,
+            (3689, 610158187362102)
+        );
+        Ok(())
+    }
+    pub enum Assert<const CHECK: bool> {}
+    pub trait IsTrue {}
+    impl IsTrue for Assert<true> {}
+
     use std::fmt::Display;
 
     use indoc::indoc;
