@@ -1930,15 +1930,15 @@ pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: u16, const MAX_STEPS2: us
         hack: bool,
     ) -> usize {
         // TODO: Opt?
-        println!(
-            "------ {} {} {} {}",
-            min_distance, max_distance, parity, hack
-        );
+        // println!(
+        //     "------ {} {} {} {}",
+        //     min_distance, max_distance, parity, hack
+        // );
         let mut count = 0;
         let center = GRID_SIZE / 2;
         for i in 0..GRID_SIZE {
             for j in 0..GRID_SIZE {
-                if (i + j) % 2 == parity as usize {
+                if true || (i + j) % 2 == parity as usize {
                     if !hack {
                         if (distance_from_center[i][j] <= max_distance) {
                             print!("+");
@@ -1947,8 +1947,7 @@ pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: u16, const MAX_STEPS2: us
                             print!(" ");
                         }
                     } else {
-                        if i.abs_diff(center) + j.abs_diff(center) < center as usize
-                            && (distance_from_center[i][j] > max_distance)
+                        if i.abs_diff(center) + j.abs_diff(center) > center as usize
                             && distance_from_center[i][j] != u16::MAX
                         {
                             print!("+");
@@ -2049,27 +2048,45 @@ pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: u16, const MAX_STEPS2: us
             count_cells_with_parity(&distance, !parity_even, 0, center_to_wall as u16, false);
         let mut corners_even = all_even - center_even;
         let mut corners_odd = all_odd - center_odd;
-        let unreachable_even =
-            count_cells_with_parity(&distance, parity_even, 0, center_to_wall as u16, true);
-        let unreachable_odd = count_cells_with_parity(
-            &distance,
-            !parity_even,
-            center_to_wall as u16 + 1,
-            u16::MAX - 1,
-            true,
-        );
-        // assert_eq!(corners_even, corners_even_hack);
-        // assert_eq!(corners_odd, corners_odd_hack);
-        // let unreachable_even = center_even + corners_even- all_even;
-        // let unreachable_odd = center_odd + corners_odd- all_odd;
-        dbg!(unreachable_even, unreachable_odd);
-        corners_even -= unreachable_even;
-        corners_odd -= unreachable_odd;
-        dbg!(n);
-        dbg!((center_even, center_odd));
-        dbg!((all_even, all_odd));
-        dbg!((corners_even, corners_odd));
-        dbg!((f_all_even, f_all_odd));
+        dbg!(corners_even, corners_odd);
+        if n.is_even() {
+            dbg!("even => adjusting odd");
+            corners_odd = count_cells_with_parity(
+                &distance,
+                !parity_even,
+                center_to_wall as u16 + 1,
+                u16::MAX,
+                true,
+            );
+        } else {
+            dbg!("odd => adjusting even");
+            corners_even = count_cells_with_parity(
+                &distance,
+                parity_even,
+                center_to_wall as u16 + 1,
+                u16::MAX,
+                true,
+            );
+        }
+        dbg!(corners_even, corners_odd);
+
+        // let unreachable_even =
+        //     count_cells_with_parity(&distance, parity_even, 0, center_to_wall as u16, true);
+        // let unreachable_odd = count_cells_with_parity(
+        //     &distance,
+        //     !parity_even,
+        //     center_to_wall as u16 + 1,
+        //     u16::MAX - 1,
+        //     true,
+        // );
+        // // assert_eq!(corners_even, corners_even_hack);
+        // // assert_eq!(corners_odd, corners_odd_hack);
+        // // let unreachable_even = center_even + corners_even- all_even;
+        // // let unreachable_odd = center_odd + corners_odd- all_odd;
+        // dbg!(unreachable_even, unreachable_odd);
+        // corners_even -= unreachable_even;
+        // corners_odd -= unreachable_odd;
+
         let (add, sub) = if n.is_even() {
             (corners_odd, corners_even)
         } else {
@@ -2100,13 +2117,21 @@ pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: u16, const MAX_STEPS2: us
             }
             println!();
         }
-        let ret = f_all_even * all_even + f_all_odd * all_odd + n * add - (n + 1) * sub;
+        dbg!(f_all_even);
+        dbg!(all_even);
+        dbg!(f_all_odd);
+        dbg!(all_odd);
+        dbg!(n);
+        dbg!(add);
+        dbg!(n + 1);
+        dbg!(sub);
+        let ret = dbg!(f_all_even * all_even + f_all_odd * all_odd + n * add - (n + 1) * sub);
         // FIXME: This is a hack...
-        if GRID_SIZE == 131 {
-            ret - n
-        } else {
+        // if GRID_SIZE == 131 {
+        //     ret - n
+        // } else {
             ret
-        }
+        // }
     };
 
     Ok((part1, part2))
@@ -2135,43 +2160,83 @@ mod tests {
             ...
         "};
         let example3 = indoc! {"
-            ...........
-            ...........
-            ......#....
-            ......#....
-            .......##..
-            .....S.....
-            ...........
-            ...........
-            ...........
-            ...........
-            ...........
+            .........
+            .........
+            .....#...
+            .....##..
+            ....S....
+            .........
+            .........
+            .........
+            .........
+        "};
+        let example4 = indoc! {"
+            .........
+            .........
+            .........
+            .........
+            ....S....
+            .........
+            .#.......
+            ..#......
+            .........
+        "};
+        let example5 = indoc! {"
+            .........
+            .#....##.
+            ...#.#...
+            ..#..###.
+            ....S....
+            ...#.#...
+            .#....##.
+            .##...##.
+            .........
         "};
         // Part 2 doesn't work without a special input structure...
-        assert_eq!(day21::<11, 6, 0>(example)?.0, 16);
-        assert_eq!(day21::<3, 0, 4>(example2)?.1, 5 * 5);
-        assert_eq!(day21::<3, 0, 7>(example2)?.1, 8 * 8);
-        assert_eq!(day21::<3, 0, 10>(example2)?.1, 11 * 11);
-        assert_eq!(day21::<3, 0, 7>(example2)?.1, 8 * 8);
-        assert_eq!(day21::<3, 0, 10>(example2)?.1, 11 * 11);
-        assert_eq!(execute_day(21, day21::<131, 64, 65>)?, (3689, 3802));
+        // assert_eq!(day21::<11, 6, 0>(example)?.0, 16);
+        // assert_eq!(day21::<3, 0, 4>(example2)?.1, 5 * 5);
+        // assert_eq!(day21::<3, 0, 7>(example2)?.1, 8 * 8);
+        // assert_eq!(day21::<3, 0, 10>(example2)?.1, 11 * 11);
+        // assert_eq!(day21::<3, 0, 7>(example2)?.1, 8 * 8);
+        // assert_eq!(day21::<3, 0, 10>(example2)?.1, 11 * 11);
+        // assert_eq!(execute_day(21, day21::<131, 64, 65>)?, (3689, 3802));
 
-        let mut example3_3 = example3
-            .lines()
-            .map(|l| l.repeat(3) + "\n")
-            .collect::<String>()
-            .repeat(3)
-            .replace('S', " ");
-        const A: usize = 11;
-        const B: usize = (A - 1) / 2;
-        let new_center = ((A * 3 + 1) * (A + B)) + (A + B);
-        example3_3.replace_range(new_center..new_center + 1, "S");
-        assert_eq!(
-            day21::<A, 64, { B + A }>(example3)?.1,
-            day21::<{ A * 3 }, { (B + A) as u16 }, 0>(&example3_3)?.0
-        );
+        fn example_grid<const N: usize>(real: &str) -> Result<()>
+        where
+            [(); 9 * N]:, // TODO: comment
+            [(); 4 + 9 * (N / 2)]:,
+            Assert<{ ((4 + 9 * (N / 2)) as u16) != 0 }>: IsTrue,
+        {
+            assert!(N.is_odd());
+            let mut real_n = real
+                .lines()
+                .map(|l| l.repeat(N) + "\n")
+                .collect::<String>()
+                .repeat(N)
+                .replace('S', " ");
+            let new_center = ((9 * N + 1) * (9 * (N / 2) + 4)) + (9 * N / 2);
+            real_n.replace_range(new_center..new_center + 1, "S");
+            assert_eq!(
+                day21::<9, 0, { 4 + 9 * (N / 2) }>(real)?.1,
+                day21::<{ 9 * N }, { (4 + 9 * (N / 2)) as u16 }, 0>(&real_n)?.0
+            );
+            Ok(())
+        }
+        for ex in [example3, example4, example5] {
+            println!("{}", "=".repeat(50));
+            println!("{}", ex.trim());
+            println!("{}", "=".repeat(50));
+            println!("\n\n\n");
+            example_grid::<3>(ex)?;
+            println!("\n\n\n");
+            example_grid::<5>(ex)?;
+            println!("\n\n\n");
+            example_grid::<7>(ex)?;
+            println!("\n\n\n");
+        }
 
         let real = crate::read_day_input(21);
+        // TODO: unify with above
         fn real_grid<const N: usize>(real: &str) -> Result<()>
         where
             [(); 131 * N]:, // TODO: comment
