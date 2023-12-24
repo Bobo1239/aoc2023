@@ -2091,10 +2091,10 @@ pub fn day23<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
         }
     }
 
+    // BFS
+    let mut part1 = 0;
     let mut queue = VecDeque::new();
     queue.push_back((start_node, 0));
-    let mut part1 = 0;
-    // BFS
     while let Some((node, steps)) = queue.pop_front() {
         part1 = part1.max(steps as usize);
         for e in condensed_graph.edges(node) {
@@ -2180,12 +2180,17 @@ pub fn day23<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
         }
     }
 
-    let end_node = pos_to_node_idx[&(GRID_SIZE as isize - 2, GRID_SIZE as isize - 2)];
-    let part2 = Dfs::new(&neighbours, &weights, start_node.index(), end_node.index())
+    let end_node = pos_to_node_idx[&(GRID_SIZE as isize - 2, GRID_SIZE as isize - 2)].index();
+    // Optimization: Stop DFS at the node before the end since there's only one path from there to
+    // the end. This cuts out roughly half of the search space!
+    debug_assert_eq!(neighbours[end_node].len(), 1);
+    let pre_end_node = neighbours[end_node][0];
+    let part2 = (Dfs::new(&neighbours, &weights, start_node.index(), pre_end_node)
         .par_split()
         .flatten()
         .max()
-        .unwrap() as usize;
+        .unwrap()
+        + weights[pre_end_node][end_node]) as usize;
 
     Ok((part1, part2))
 }
