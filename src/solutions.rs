@@ -3,7 +3,7 @@
 use std::{
     array,
     cmp::Ordering,
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     hash::Hasher,
     iter,
     num::Wrapping,
@@ -15,9 +15,14 @@ use std::{
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
 use num::Integer;
+use petgraph::{
+    graph::DiGraph,
+    visit::{EdgeRef, IntoNodeReferences},
+};
 use rayon::prelude::*;
 use regex::bytes::Regex;
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
+use spliter::{ParallelSpliterator, Spliterator};
 
 use crate::{AsciiByteSliceExt, FxIndexMap};
 
@@ -2007,6 +2012,184 @@ pub fn day22(input: &str) -> Result<(usize, usize)> {
     Ok((part1, part2))
 }
 
+pub fn day23<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
+    fn grid<const GRID_SIZE: usize>(input: &str, pos: (isize, isize)) -> u8 {
+        input.as_bytes()[(GRID_SIZE + 1) * pos.1 as usize + pos.0 as usize]
+    }
+
+    let mut condensed_graph: DiGraph<(isize, isize), u16> = DiGraph::new();
+    let start_node = condensed_graph.add_node((1, 1));
+    let mut pos_to_node_idx = FxHashMap::default();
+    pos_to_node_idx.insert((1, 1), start_node);
+
+    let mut done = HashSet::new();
+    let mut queue = VecDeque::new();
+    queue.push_back((start_node, (1, 1), (0, -1)));
+    while let Some((start_node, start, mut back_delta)) = queue.pop_front() {
+        if done.contains(&start) {
+            continue;
+        }
+        done.insert(start);
+
+        let mut steps = 1;
+        let mut next_pos_vec = Vec::new();
+        let mut pos = start;
+        let mut skipped_dirs = 0;
+        loop {
+            for delta in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                if delta == back_delta {
+                    continue;
+                }
+                let new_pos = (pos.0 + delta.0, pos.1 + delta.1);
+                if (1..GRID_SIZE as isize - 1).contains(&new_pos.0)
+                    && (1..GRID_SIZE as isize - 1).contains(&new_pos.1)
+                {
+                    let (walkable, skipped_dirs_new) = match grid::<GRID_SIZE>(input, new_pos) {
+                        b'.' => (true, 0),
+                        b'>' if delta != (-1, 0) => (true, 0),
+                        b'^' if delta != (0, 1) => (true, 0),
+                        b'<' if delta != (1, 0) => (true, 0),
+                        b'v' if delta != (0, -1) => (true, 0),
+                        b'>' | b'^' | b'<' | b'v' => (false, 1),
+                        b'#' => (false, 0),
+                        _ => unreachable!(),
+                    };
+                    skipped_dirs += skipped_dirs_new;
+                    if walkable {
+                        next_pos_vec.push((new_pos, (-delta.0, -delta.1)));
+                    }
+                }
+            }
+            match next_pos_vec.len() {
+                0 => {
+                    // We've reached the end
+                    debug_assert_eq!(pos, (GRID_SIZE as isize - 2, GRID_SIZE as isize - 2));
+                    steps += 1;
+                    break;
+                }
+                1 => {
+                    if skipped_dirs > 0 {
+                        // NOTE: We want to break here anyways so we create nodes which are needed
+                        //       for part 2.
+                        break;
+                    } else {
+                        steps += 1;
+                        (pos, back_delta) = next_pos_vec[0];
+                        next_pos_vec.clear();
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        let end_node = pos_to_node_idx
+            .entry(pos)
+            .or_insert_with(|| condensed_graph.add_node(pos));
+        condensed_graph.add_edge(start_node, *end_node, steps);
+        for (next_pos, back_delta) in next_pos_vec {
+            queue.push_back((*end_node, next_pos, back_delta));
+        }
+    }
+
+    let mut queue = VecDeque::new();
+    queue.push_back((start_node, 0));
+    let mut part1 = 0;
+    // BFS
+    while let Some((node, steps)) = queue.pop_front() {
+        part1 = part1.max(steps as usize);
+        for e in condensed_graph.edges(node) {
+            queue.push_back((e.target(), steps + e.weight()));
+        }
+    }
+
+    const NODE_COUNT: usize = 36;
+    assert!(NODE_COUNT >= condensed_graph.node_count());
+
+    let mut neighbours = vec![Vec::new(); NODE_COUNT];
+    for (n, _) in condensed_graph.node_references() {
+        neighbours[n.index()].extend(condensed_graph.neighbors_undirected(n).map(|n| n.index()));
+    }
+    let mut weights = [[0; NODE_COUNT]; NODE_COUNT];
+    for edge in condensed_graph.edge_references() {
+        weights[edge.source().index()][edge.target().index()] = *edge.weight();
+        weights[edge.target().index()][edge.source().index()] = *edge.weight();
+    }
+
+    struct Dfs<'a> {
+        neighbours: &'a [Vec<usize>],
+        weights: &'a [[u16; NODE_COUNT]; NODE_COUNT],
+        end: usize,
+        stack: Vec<(usize, u64, u16)>, // node, already_visited, accumulated_distance
+    }
+
+    impl<'a> Dfs<'a> {
+        fn new(
+            neighbours: &'a [Vec<usize>],
+            weights: &'a [[u16; NODE_COUNT]; NODE_COUNT],
+            start: usize,
+            end: usize,
+        ) -> Dfs<'a> {
+            Dfs {
+                neighbours,
+                weights,
+                end,
+                stack: vec![(start, 1 << start, 0)],
+            }
+        }
+    }
+
+    impl Iterator for Dfs<'_> {
+        type Item = Option<u16>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if let Some((node, already_visited, accumulated_distance)) = self.stack.pop() {
+                if node == self.end {
+                    Some(Some(accumulated_distance))
+                } else {
+                    for n in &self.neighbours[node] {
+                        let bit_mask = 1 << n;
+                        if (bit_mask & already_visited) == 0 {
+                            self.stack.push((
+                                *n,
+                                already_visited | bit_mask,
+                                accumulated_distance + self.weights[node][*n],
+                            ))
+                        }
+                    }
+                    Some(None)
+                }
+            } else {
+                None
+            }
+        }
+    }
+
+    impl<'a> Spliterator for Dfs<'a> {
+        fn split(&mut self) -> Option<Self> {
+            if self.stack.len() > 2 {
+                let len = self.stack.len();
+                if len >= 2 {
+                    let stack = self.stack.split_off(len / 2);
+                    Some(Dfs { stack, ..*self })
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
+    }
+
+    let end_node = pos_to_node_idx[&(GRID_SIZE as isize - 2, GRID_SIZE as isize - 2)];
+    let part2 = Dfs::new(&neighbours, &weights, start_node.index(), end_node.index())
+        .par_split()
+        .flatten()
+        .max()
+        .unwrap() as usize;
+
+    Ok((part1, part2))
+}
+
 #[cfg(test)]
 mod tests {
     use std::fmt::Display;
@@ -2395,6 +2578,38 @@ mod tests {
         "};
         assert_eq!(day22(example)?, (5, 7));
         assert_eq!(execute_day(22, day22)?, (398, 70727));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day23() -> Result<()> {
+        let example = indoc! {"
+            #.#####################
+            #.......#########...###
+            #######.#########.#.###
+            ###.....#.>.>.###.#.###
+            ###v#####.#v#.###.#.###
+            ###.>...#.#.#.....#...#
+            ###v###.#.#.#########.#
+            ###...#.#.#.......#...#
+            #####.#.#.#######.#.###
+            #.....#.#.#.......#...#
+            #.#####.#.#.#########v#
+            #.#...#...#...###...>.#
+            #.#.#v#######v###.###v#
+            #...#.>.#...>.>.#.###.#
+            #####v#.#.###v#.#.###.#
+            #.....#...#...#.#.#...#
+            #.#########.###.#.#.###
+            #...###...#...#...#.###
+            ###.###.#.###v#####v###
+            #...#...#.#.>.>.#.>.###
+            #.###.###.#.###.#.#v###
+            #.....###...###...#...#
+            #####################.#
+        "};
+        assert_eq!(day23::<23>(example)?, (94, 154));
+        assert_eq!(execute_day(23, day23::<141>)?, (2282, 6646));
         Ok(())
     }
 }
