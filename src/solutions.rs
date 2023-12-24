@@ -2119,6 +2119,7 @@ pub fn day23<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
         neighbours: &'a [Vec<usize>],
         weights: &'a [[u16; NODE_COUNT]; NODE_COUNT],
         end: usize,
+        pre_end_bits: u64,
         stack: Vec<(usize, u64, u16)>, // node, already_visited, accumulated_distance
     }
 
@@ -2128,11 +2129,13 @@ pub fn day23<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
             weights: &'a [[u16; NODE_COUNT]; NODE_COUNT],
             start: usize,
             end: usize,
+            pre_end: &[usize],
         ) -> Dfs<'a> {
             Dfs {
                 neighbours,
                 weights,
                 end,
+                pre_end_bits: pre_end.iter().map(|x| 1 << x).fold(0, |a, b| a | b),
                 stack: vec![(start, 1 << start, 0)],
             }
         }
@@ -2145,6 +2148,13 @@ pub fn day23<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
             if let Some((node, already_visited, accumulated_distance)) = self.stack.pop() {
                 if node == self.end {
                     Some(Some(accumulated_distance))
+                } else if already_visited & self.pre_end_bits == self.pre_end_bits {
+                    self.stack.push((
+                        self.end,
+                        already_visited | (1 << self.end),
+                        accumulated_distance + self.weights[node][self.end],
+                    ));
+                    Some(None)
                 } else {
                     for n in &self.neighbours[node] {
                         let bit_mask = 1 << n;
@@ -2182,14 +2192,29 @@ pub fn day23<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
 
     let end_node = pos_to_node_idx[&(GRID_SIZE as isize - 2, GRID_SIZE as isize - 2)].index();
     // Optimization: Stop DFS at the node before the end since there's only one path from there to
-    // the end. This cuts out roughly half of the search space!
+    // the end. This cuts out roughly half of the search space! (30 -> 17 million)
+    // Similar idea for the nodes before that. If they are both visited the next node must be the
+    // `pre_end_node`. Reduces search space further to 14 million.
     debug_assert_eq!(neighbours[end_node].len(), 1);
     let pre_end_node = neighbours[end_node][0];
-    let part2 = (Dfs::new(&neighbours, &weights, start_node.index(), pre_end_node)
-        .par_split()
-        .flatten()
-        .max()
-        .unwrap()
+    let pre_pre_end_nodes: [_; 2] = neighbours[pre_end_node]
+        .iter()
+        .copied()
+        .filter(|x| *x != end_node)
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    let part2 = (Dfs::new(
+        &neighbours,
+        &weights,
+        start_node.index(),
+        pre_end_node,
+        &pre_pre_end_nodes,
+    )
+    .par_split()
+    .flatten()
+    .max()
+    .unwrap()
         + weights[pre_end_node][end_node]) as usize;
 
     Ok((part1, part2))
