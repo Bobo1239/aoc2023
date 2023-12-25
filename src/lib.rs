@@ -37,6 +37,8 @@ pub static ALL_SOLUTIONS: &[SolutionFn] = &[
     day21,
     day22,
     day23::<141>,
+    day24::<200000000000000, 400000000000000>,
+    day25,
 ];
 
 pub fn read_day_input(n: usize) -> String {

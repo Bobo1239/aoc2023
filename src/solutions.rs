@@ -7,18 +7,19 @@ use std::{
     hash::Hasher,
     iter,
     num::Wrapping,
-    ops::{Range, RangeInclusive},
+    ops::{Add, Mul, Range, RangeInclusive},
     sync::atomic::{self, AtomicUsize},
     usize,
 };
 
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
-use num::Integer;
+use num::{traits::AsPrimitive, Integer};
 use petgraph::{
     graph::DiGraph,
     visit::{EdgeRef, IntoNodeReferences},
 };
+use rand::Rng;
 use rayon::prelude::*;
 use regex::bytes::Regex;
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
@@ -2220,6 +2221,163 @@ pub fn day23<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
     Ok((part1, part2))
 }
 
+pub fn day24<const PART1_MIN: isize, const PART1_MAX: isize>(
+    input: &str,
+) -> Result<(usize, usize)> {
+    fn cross_xy(a: [isize; 3], b: [isize; 3]) -> isize {
+        a[0] * b[1] - a[1] * b[0]
+    }
+    fn sub(a: [isize; 3], b: [isize; 3]) -> [isize; 3] {
+        [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+    }
+    fn add<T: Copy + Add<T, Output = T>>(a: [T; 3], b: [T; 3]) -> [T; 3] {
+        [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+    }
+    fn smul<T: Copy + Mul<T, Output = T>>(a: T, b: [T; 3]) -> [T; 3] {
+        [a * b[0], a * b[1], a * b[2]]
+    }
+    fn cast<T: Copy + 'static, S: Copy + AsPrimitive<T>>(v: [S; 3]) -> [T; 3] {
+        [v[0].as_(), v[1].as_(), v[2].as_()]
+    }
+
+    #[derive(Debug)]
+    struct Hailstone {
+        pos: [isize; 3],
+        vel: [isize; 3],
+    }
+
+    let mut hails = Vec::new();
+    for l in input.lines() {
+        let (pos, vel) = l.split_once('@').unwrap();
+        let mut pos = pos.split(',').map(|x| x.trim().parse().unwrap());
+        let mut vel = vel.split(',').map(|x| x.trim().parse().unwrap());
+        let pos: [_; 3] = array::from_fn(|_| pos.next().unwrap());
+        let vel: [_; 3] = array::from_fn(|_| vel.next().unwrap());
+        hails.push(Hailstone { pos, vel });
+    }
+
+    fn intersects<const PART1_MIN: isize, const PART1_MAX: isize>(
+        a: &Hailstone,
+        b: &Hailstone,
+    ) -> bool {
+        // https://stackoverflow.com/a/565282
+        let (p, r) = (a.pos, a.vel);
+        let (q, s) = (b.pos, b.vel);
+
+        let r_cross_s = cross_xy(r, s);
+        if r_cross_s == 0 {
+            // Parallel or collinear
+            false
+        } else {
+            let q_minus_p = sub(q, p);
+            let t = cross_xy(q_minus_p, s) as f32 / r_cross_s as f32;
+            if t < 0. {
+                return false;
+            }
+            let u = cross_xy(q_minus_p, r) as f32 / r_cross_s as f32;
+            if u < 0. {
+                return false;
+            }
+            let collision_p = add(cast(q), smul(u, cast(s)));
+            let range = PART1_MIN as f32..=PART1_MAX as f32;
+            range.contains(&collision_p[0]) && range.contains(&collision_p[1])
+        }
+    }
+
+    let part1 = (0..hails.len())
+        .into_par_iter()
+        .map(|i| {
+            let mut count = 0;
+            for j in 0..i {
+                if intersects::<PART1_MIN, PART1_MAX>(&hails[i], &hails[j]) {
+                    count += 1;
+                }
+            }
+            count
+        })
+        .sum();
+
+    let rock = Hailstone {
+        pos: [0; 3],
+        vel: [0; 3],
+    };
+    // TODO
+    let part2 = rock.pos.iter().sum::<isize>() as usize;
+
+    Ok((part1, part2))
+}
+
+pub fn day25(input: &str) -> Result<(usize, usize)> {
+    // TODO: Use Edmond-Karp instead which is much faster: https://www.reddit.com/r/adventofcode/comments/18qbsxs/2023_day_25_solutions/keuv74k/
+    fn karger_algorithm(graph: &mut FxHashMap<usize, (Vec<usize>, usize)>) -> usize {
+        // Karger's algorithm; based on https://codegolf.stackexchange.com/a/259621 (buggy!!!)
+        while graph.len() > 2 {
+            // Select random edge between u and w
+            let mut keys = graph.keys();
+            let u_idx = rand::thread_rng().gen_range(0..keys.len());
+            let u = *keys.nth(u_idx).unwrap();
+            let w_idx = rand::thread_rng().gen_range(0..graph[&u].0.len());
+            let w = graph[&u].0[w_idx];
+
+            // Contract w into u
+            let (w_edges, w_count) = graph.remove(&w).unwrap();
+            let (u_edges, u_count) = graph.get_mut(&u).unwrap();
+            u_edges.extend_from_slice(&w_edges);
+            *u_count += w_count;
+
+            // Adjust w's neighbours
+            for node in w_edges.iter() {
+                let node_list = &mut graph.get_mut(node).unwrap().0;
+                node_list.retain(|x| *x != w);
+                if *node == u {
+                    node_list.retain(|x| *x != u);
+                } else {
+                    node_list.push(u);
+                }
+            }
+        }
+
+        graph.values().next().unwrap().0.len()
+    }
+
+    let mut name_to_node = FxHashMap::default();
+    let mut graph = FxHashMap::default();
+    for l in input.lines() {
+        let (from, to_iter) = l.split_once(": ").unwrap();
+        let to_iter = to_iter.split(' ');
+        let next_idx = name_to_node.len();
+        let from_idx = *name_to_node.entry(from).or_insert_with(|| next_idx);
+        for to in to_iter {
+            let next_idx = name_to_node.len();
+            let to_idx = *name_to_node.entry(to).or_insert_with(|| next_idx);
+            graph
+                .entry(from_idx)
+                .or_insert((Vec::new(), 1))
+                .0
+                .push(to_idx);
+            graph
+                .entry(to_idx)
+                .or_insert((Vec::new(), 1))
+                .0
+                .push(from_idx);
+        }
+    }
+
+    let part1 = (0..1000)
+        .into_par_iter()
+        .find_map_any(|_| {
+            let mut graph = graph.clone();
+            let cut = karger_algorithm(&mut graph);
+            if cut == 3 {
+                Some(graph.values().map(|x| x.1).product())
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    Ok((part1, 0))
+}
+
 #[cfg(test)]
 mod tests {
     use std::fmt::Display;
@@ -2640,6 +2798,45 @@ mod tests {
         "};
         assert_eq!(day23::<23>(example)?, (94, 154));
         assert_eq!(execute_day(23, day23::<141>)?, (2282, 6646));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day24() -> Result<()> {
+        let example = indoc! {"
+            19, 13, 30 @ -2,  1, -2
+            18, 19, 22 @ -1, -1, -2
+            20, 25, 34 @ -2, -2, -4
+            12, 31, 28 @ -1, -2, -1
+            20, 19, 15 @  1, -5, -3
+        "};
+        assert_eq!(day24::<7, 27>(example)?, (2, 47));
+        assert_eq!(
+            execute_day(24, day24::<200000000000000, 400000000000000>)?,
+            (31208, 0)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_day25() -> Result<()> {
+        let example = indoc! {"
+            jqt: rhn xhk nvd
+            rsh: frs pzl lsr
+            xhk: hfx
+            cmg: qnr nvd lhk bvb
+            rhn: xhk bvb hfx
+            bvb: xhk hfx
+            pzl: lsr hfx nvd
+            qnr: nvd
+            ntq: jqt hfx bvb xhk
+            nvd: lhk
+            lsr: lhk
+            rzs: qnr cmg lsr rsh
+            frs: qnr lhk lsr
+        "};
+        assert_eq!(day25(example)?, (54, 0));
+        assert_eq!(execute_day(25, day25)?, (603368, 0));
         Ok(())
     }
 }
