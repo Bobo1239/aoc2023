@@ -20,7 +20,6 @@ use petgraph::{
     graph::DiGraph,
     visit::{EdgeRef, IntoNodeReferences},
 };
-use rand::Rng;
 use rayon::prelude::*;
 use regex::bytes::Regex;
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
@@ -2371,40 +2370,47 @@ pub fn day24<const PART1_MIN: isize, const PART1_MAX: isize>(
 }
 
 pub fn day25(input: &str) -> Result<(usize, usize)> {
-    // TODO: Use Edmond-Karp instead which is much faster: https://www.reddit.com/r/adventofcode/comments/18qbsxs/2023_day_25_solutions/keuv74k/
-    fn karger_algorithm(graph: &mut FxHashMap<usize, (Vec<usize>, usize)>) -> usize {
-        // Karger's algorithm; based on https://codegolf.stackexchange.com/a/259621 (buggy!!!)
-        while graph.len() > 2 {
-            // Select random edge between u and w
-            let mut keys = graph.keys();
-            let u_idx = rand::thread_rng().gen_range(0..keys.len());
-            let u = *keys.nth(u_idx).unwrap();
-            let w_idx = rand::thread_rng().gen_range(0..graph[&u].0.len());
-            let w = graph[&u].0[w_idx];
-
-            // Contract w into u
-            let (w_edges, w_count) = graph.remove(&w).unwrap();
-            let (u_edges, u_count) = graph.get_mut(&u).unwrap();
-            u_edges.extend_from_slice(&w_edges);
-            *u_count += w_count;
-
-            // Adjust w's neighbours
-            for node in w_edges.iter() {
-                let node_list = &mut graph.get_mut(node).unwrap().0;
-                node_list.retain(|x| *x != w);
-                if *node == u {
-                    node_list.retain(|x| *x != u);
-                } else {
-                    node_list.push(u);
+    fn bfs(graph: &[Vec<usize>], start: usize, target: Option<usize>) -> (Vec<usize>, usize) {
+        let mut prev = vec![usize::MAX; graph.len()];
+        prev[start] = start;
+        let mut queue = VecDeque::new();
+        queue.push_back(start);
+        let mut farthest = 0;
+        let mut seen = 0;
+        let mut found_target = false;
+        'outer: while let Some(node) = queue.pop_front() {
+            farthest = node;
+            seen += 1;
+            for next in &graph[node] {
+                if prev[*next] == usize::MAX {
+                    prev[*next] = node;
+                    queue.push_back(*next);
+                }
+                if let Some(target) = target {
+                    if *next == target {
+                        prev[*next] = node;
+                        found_target = true;
+                        break 'outer;
+                    }
                 }
             }
         }
-
-        graph.values().next().unwrap().0.len()
+        let mut rev_path = Vec::new();
+        let mut cur = if let (Some(target), true) = (target, found_target) {
+            target
+        } else {
+            farthest
+        };
+        while cur != start {
+            rev_path.push(cur);
+            cur = prev[cur];
+        }
+        rev_path.push(cur);
+        (rev_path, seen)
     }
 
     let mut name_to_node = FxHashMap::default();
-    let mut graph = FxHashMap::default();
+    let mut graph = Vec::new();
     for l in input.lines() {
         let (from, to_iter) = l.split_once(": ").unwrap();
         let to_iter = to_iter.split(' ');
@@ -2413,31 +2419,31 @@ pub fn day25(input: &str) -> Result<(usize, usize)> {
         for to in to_iter {
             let next_idx = name_to_node.len();
             let to_idx = *name_to_node.entry(to).or_insert_with(|| next_idx);
-            graph
-                .entry(from_idx)
-                .or_insert((Vec::new(), 1))
-                .0
-                .push(to_idx);
-            graph
-                .entry(to_idx)
-                .or_insert((Vec::new(), 1))
-                .0
-                .push(from_idx);
+            while name_to_node.len() > graph.len() {
+                graph.push(Vec::with_capacity(4));
+            }
+            graph[from_idx].push(to_idx);
+            graph[to_idx].push(from_idx);
         }
     }
 
-    let part1 = (0..1000)
-        .into_par_iter()
-        .find_map_any(|_| {
-            let mut graph = graph.clone();
-            let cut = karger_algorithm(&mut graph);
-            if cut == 3 {
-                Some(graph.values().map(|x| x.1).product())
-            } else {
-                None
-            }
-        })
-        .unwrap();
+    // Edmonds-Karp algorithm inspired with known min-cut value 3
+    let mut target = None;
+    for _ in 0..3 {
+        // NOTE: Path is reversed!
+        let (rev_path, seen) = bfs(&graph, 0, target);
+        if target.is_none() {
+            target = Some(*rev_path.first().unwrap());
+            assert_eq!(seen, graph.len());
+        } else {
+            assert_eq!(rev_path.first().copied(), target);
+        }
+        for edge in rev_path.windows(2) {
+            graph[edge[1]].retain(|x| *x != edge[0]);
+        }
+    }
+    let (_, seen) = bfs(&graph, 0, target);
+    let part1 = (graph.len() - seen) * seen;
     Ok((part1, 0))
 }
 
