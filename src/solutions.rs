@@ -1473,7 +1473,9 @@ pub fn day17<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
             dist[dir.idx()][0][0] = 0;
         }
 
-        let mut bucket_queue = vec![Vec::with_capacity(32); 2048];
+        let mut bucket_queue = (0..2048)
+            .map(|_| Vec::with_capacity(32))
+            .collect::<Vec<_>>();
         bucket_queue[0].push(State {
             cost: 0,
             pos: (0, 0),
