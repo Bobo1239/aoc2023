@@ -14,6 +14,7 @@ use std::{
 
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
+use nalgebra::{Matrix, U1, U6};
 use num::{traits::AsPrimitive, Integer};
 use petgraph::{
     graph::DiGraph,
@@ -2224,8 +2225,15 @@ pub fn day23<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
 pub fn day24<const PART1_MIN: isize, const PART1_MAX: isize>(
     input: &str,
 ) -> Result<(usize, usize)> {
-    fn cross_xy(a: [isize; 3], b: [isize; 3]) -> isize {
+    fn cross_2d(a: [isize; 3], b: [isize; 3]) -> isize {
         a[0] * b[1] - a[1] * b[0]
+    }
+    fn cross(a: [isize; 3], b: [isize; 3]) -> [isize; 3] {
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
     }
     fn sub(a: [isize; 3], b: [isize; 3]) -> [isize; 3] {
         [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -2264,17 +2272,17 @@ pub fn day24<const PART1_MIN: isize, const PART1_MAX: isize>(
         let (p, r) = (a.pos, a.vel);
         let (q, s) = (b.pos, b.vel);
 
-        let r_cross_s = cross_xy(r, s);
+        let r_cross_s = cross_2d(r, s);
         if r_cross_s == 0 {
             // Parallel or collinear
             false
         } else {
             let q_minus_p = sub(q, p);
-            let t = cross_xy(q_minus_p, s) as f32 / r_cross_s as f32;
+            let t = cross_2d(q_minus_p, s) as f32 / r_cross_s as f32;
             if t < 0. {
                 return false;
             }
-            let u = cross_xy(q_minus_p, r) as f32 / r_cross_s as f32;
+            let u = cross_2d(q_minus_p, r) as f32 / r_cross_s as f32;
             if u < 0. {
                 return false;
             }
@@ -2297,12 +2305,67 @@ pub fn day24<const PART1_MIN: isize, const PART1_MAX: isize>(
         })
         .sum();
 
-    let rock = Hailstone {
-        pos: [0; 3],
-        vel: [0; 3],
-    };
-    // TODO
-    let part2 = rock.pos.iter().sum::<isize>() as usize;
+    // See day24_math.py for derivation
+    fn matrix_entries(a: &Hailstone, b: &Hailstone) -> [[f64; 6]; 3] {
+        fn write_sub_matrix(a: &mut [[f64; 6]; 3], offset_x: usize, b: [[isize; 3]; 3]) {
+            for i in 0..3 {
+                for j in 0..3 {
+                    a[i][offset_x + j] = b[i][j] as f64;
+                }
+            }
+        }
+        fn subm(mut a: [[isize; 3]; 3], b: [[isize; 3]; 3]) -> [[isize; 3]; 3] {
+            for i in 0..3 {
+                for j in 0..3 {
+                    a[i][j] -= b[i][j];
+                }
+            }
+            a
+        }
+        #[rustfmt::skip]
+        fn m(v: [isize; 3]) -> [[isize; 3]; 3] {
+            [
+                [    0, -v[2],  v[1]],
+                [ v[2],     0, -v[0]],
+                [-v[1],  v[0],     0]
+            ]
+        }
+        let mut ret = [[0.0; 6]; 3];
+        write_sub_matrix(&mut ret, 0, subm(m(a.vel), m(b.vel)));
+        write_sub_matrix(&mut ret, 3, subm(m(b.pos), m(a.pos)));
+        ret
+    }
+
+    // Reduce magnitude of position values since we otherwise run into precision issues...
+    for i in 0..3 {
+        hails[i].pos = sub(hails[i].pos, [PART1_MIN, PART1_MIN, PART1_MIN]);
+    }
+
+    let mut matrix = [[0.; 6]; 6];
+    matrix[0..3].copy_from_slice(&matrix_entries(&hails[0], &hails[1]));
+    matrix[3..6].copy_from_slice(&matrix_entries(&hails[0], &hails[2]));
+
+    let b01 = sub(
+        cross(hails[1].pos, hails[1].vel),
+        cross(hails[0].pos, hails[0].vel),
+    );
+    let b02 = sub(
+        cross(hails[2].pos, hails[2].vel),
+        cross(hails[0].pos, hails[0].vel),
+    );
+    let mut b = [0.; 6];
+    for i in 0..3 {
+        b[i] = b01[i] as f64;
+        b[i + 3] = b02[i] as f64;
+    }
+
+    let matrix = Matrix::<_, U6, U6, _>::from_row_iterator(
+        matrix.into_iter().flat_map(|row| row.into_iter()),
+    );
+    let b = Matrix::<_, U6, U1, _>::from_iterator(b);
+    let rock_pos_vel = matrix.lu().solve(&b).unwrap();
+    let rock_pos = rock_pos_vel.column_part(0, 3);
+    let part2 = (rock_pos.iter().sum::<f64>().round() as isize + PART1_MIN * 3) as usize;
 
     Ok((part1, part2))
 }
@@ -2813,7 +2876,7 @@ mod tests {
         assert_eq!(day24::<7, 27>(example)?, (2, 47));
         assert_eq!(
             execute_day(24, day24::<200000000000000, 400000000000000>)?,
-            (31208, 0)
+            (31208, 580043851566574)
         );
         Ok(())
     }
