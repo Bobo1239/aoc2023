@@ -2110,6 +2110,7 @@ pub fn day22(input: &str) -> Result<(usize, usize)> {
     Ok((part1, part2))
 }
 
+// NOTE: Apparently there exists an efficient algorithm: https://www.reddit.com/r/adventofcode/comments/18rrfwy/2023_solving_aoc_in_31ms_using_rust/kf4mwir/
 pub fn day23<const GRID_SIZE: usize>(input: &str) -> Result<(usize, usize)> {
     fn grid<const GRID_SIZE: usize>(input: &str, pos: (isize, isize)) -> u8 {
         input.as_bytes()[(GRID_SIZE + 1) * pos.1 as usize + pos.0 as usize]
