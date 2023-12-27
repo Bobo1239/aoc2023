@@ -1918,7 +1918,7 @@ pub fn day20(input: &str) -> Result<(usize, usize)> {
 // TODO: Other strategy: Do a 3x3 grid of grids; Simulate for that (adjusting parity) so the outer
 //       grids have the same parity as in the large case (parity is the same across all); then
 //       count the marked fields in each of border grids and apply some math for solution
-pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: u16, const MAX_STEPS2: usize>(
+pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: usize, const MAX_STEPS2: usize>(
     input: &str,
 ) -> Result<(usize, usize)> {
     fn access<const GRID_SIZE: usize>(slice: &[u8], pos: (isize, isize)) -> u8 {
@@ -1969,6 +1969,48 @@ pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: u16, const MAX_STEPS2: us
         count
     }
 
+    fn count_reachable_from<const GRID_SIZE: usize>(
+        input: &[u8],
+        parity: bool,
+        start: (isize, isize),
+        max_dist: usize,
+    ) -> usize {
+        println!("{} {:?} {}", parity, start, max_dist);
+        let mut reached = [[false; GRID_SIZE]; GRID_SIZE];
+        let mut frontier = VecDeque::new();
+        frontier.push_back((start, max_dist));
+        let mut count = 1;
+        reached[start.0 as usize][start.1 as usize] = true;
+        while let Some((pos, remaining)) = frontier.pop_front() {
+            for delta in [(0, 1), (0, -1), (1, 0), (-1, 0)] {
+                let new_pos = (pos.0 + delta.0, pos.1 + delta.1);
+                if (0..GRID_SIZE as isize).contains(&new_pos.0)
+                    && (0..GRID_SIZE as isize).contains(&new_pos.1)
+                    && !reached[new_pos.0 as usize][new_pos.1 as usize]
+                    && access::<GRID_SIZE>(input, new_pos) != b'#'
+                {
+                    // if ((pos.0 + pos.1) % 2 == 1) == parity {
+                    if remaining > 0 {
+                        reached[new_pos.0 as usize][new_pos.1 as usize] = true;
+                        count += 1;
+                        frontier.push_back((new_pos, remaining - 1));
+                    }
+                }
+            }
+        }
+        for row in reached {
+            for c in row {
+                if c {
+                    print!("#");
+                } else {
+                    print!(".");
+                }
+            }
+            println!();
+        }
+        count
+    }
+
     let input = input.as_bytes();
     let start = memchr::memchr(b'S', input).unwrap();
     let start = (start / (GRID_SIZE + 1), start % (GRID_SIZE + 1));
@@ -1992,9 +2034,17 @@ pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: u16, const MAX_STEPS2: us
             }
         }
     }
+    let center = (GRID_SIZE / 2) as isize;
+    // TODO: Could unify with part2
+    let part1 = count_reachable_from::<GRID_SIZE>(
+        input,
+        MAX_STEPS1.is_even(),
+        (center, center),
+        MAX_STEPS1,
+    );
 
-    let part1 = count_cells_with_parity(&distance, MAX_STEPS1.is_odd(), 0, MAX_STEPS1, false);
-    println!("PART2");
+    // let part1 = count_cells_with_parity(&distance, MAX_STEPS1.is_odd(), 0, MAX_STEPS1, false);
+    // println!("PART2");
     let part2 = if MAX_STEPS2 == 0 {
         for row in distance {
             for c in row {
@@ -2008,18 +2058,18 @@ pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: u16, const MAX_STEPS2: us
             }
             println!();
         }
-        for row in distance {
-            for c in row {
-                if c == u16::MAX {
-                    print!("#");
-                } else if c > MAX_STEPS1 as u16 && c != u16::MAX {
-                    print!("O");
-                } else {
-                    print!(".");
-                }
-            }
-            println!();
-        }
+        // for row in distance {
+        //     for c in row {
+        //         if c == u16::MAX {
+        //             print!("#");
+        //         } else if c > MAX_STEPS1 as u16 && c != u16::MAX {
+        //             print!("O");
+        //         } else {
+        //             print!(".");
+        //         }
+        //     }
+        //     println!();
+        // }
         0
     } else {
         // Observations:
@@ -2041,37 +2091,54 @@ pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: u16, const MAX_STEPS2: us
         } else {
             (n.pow(2), (n + 1).pow(2))
         };
+        let end = GRID_SIZE as isize - 1;
+        let max_dist = (GRID_SIZE / 2) - 1;
         let parity_even = MAX_STEPS2.is_odd();
         // NOTE: even/odd referes to the position of the grid (in the grid of grids)
+        // TODO: We can't use these anymore
         let all_even = count_cells_with_parity(&distance, parity_even, 0, u16::MAX - 1, false);
         let all_odd = count_cells_with_parity(&distance, !parity_even, 0, u16::MAX - 1, false);
         let center_even =
-            count_cells_with_parity(&distance, parity_even, 0, center_to_wall as u16, false);
+            count_reachable_from::<GRID_SIZE>(input, parity_even, (center, center), GRID_SIZE / 2);
         let center_odd =
-            count_cells_with_parity(&distance, !parity_even, 0, center_to_wall as u16, false);
-        let mut corners_even = all_even - center_even;
-        let mut corners_odd = all_odd - center_odd;
+            count_reachable_from::<GRID_SIZE>(input, !parity_even, (center, center), GRID_SIZE / 2);
+        // let mut corners_even = all_even - center_even;
+        // let mut corners_odd = all_odd - center_odd;
+        // dbg!(corners_even, corners_odd);
+        // if n.is_even() {
+        //     dbg!("even => adjusting odd");
+        //     corners_odd = count_cells_with_parity(
+        //         &distance,
+        //         !parity_even,
+        //         center_to_wall as u16 + 1,
+        //         u16::MAX,
+        //         true,
+        //     );
+        // } else {
+        //     dbg!("odd => adjusting even");
+        //     corners_even = count_cells_with_parity(
+        //         &distance,
+        //         parity_even,
+        //         center_to_wall as u16 + 1,
+        //         u16::MAX,
+        //         true,
+        //     );
+        // }
+        // dbg!(corners_even, corners_odd);
+        // TODO: Can combined counts for even and odd parity
+        // TODO: Can use multiple start points with 1 fn call?
+        let corners_even = count_reachable_from::<GRID_SIZE>(input, parity_even, (0, 0), max_dist)
+            + count_reachable_from::<GRID_SIZE>(input, parity_even, (0, end), max_dist)
+            + count_reachable_from::<GRID_SIZE>(input, parity_even, (end, 0), max_dist)
+            + count_reachable_from::<GRID_SIZE>(input, parity_even, (end, end), max_dist);
+        let corners_odd = count_reachable_from::<GRID_SIZE>(input, !parity_even, (0, 0), max_dist)
+            + count_reachable_from::<GRID_SIZE>(input, !parity_even, (0, end), max_dist)
+            + count_reachable_from::<GRID_SIZE>(input, !parity_even, (end, 0), max_dist)
+            + count_reachable_from::<GRID_SIZE>(input, !parity_even, (end, end), max_dist);
         dbg!(corners_even, corners_odd);
-        if n.is_even() {
-            dbg!("even => adjusting odd");
-            corners_odd = count_cells_with_parity(
-                &distance,
-                !parity_even,
-                center_to_wall as u16 + 1,
-                u16::MAX,
-                true,
-            );
-        } else {
-            dbg!("odd => adjusting even");
-            corners_even = count_cells_with_parity(
-                &distance,
-                parity_even,
-                center_to_wall as u16 + 1,
-                u16::MAX,
-                true,
-            );
-        }
-        dbg!(corners_even, corners_odd);
+        let diff_odd = all_odd - center_odd - corners_odd;
+        let diff_even = all_even - center_even - corners_even;
+        dbg!(diff_even, diff_odd);
 
         // let unreachable_even =
         //     count_cells_with_parity(&distance, parity_even, 0, center_to_wall as u16, true);
@@ -2096,30 +2163,32 @@ pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: u16, const MAX_STEPS2: us
             (corners_even, corners_odd)
         };
         dbg!((add, sub));
-        for row in distance {
-            for c in row {
-                if c == u16::MAX {
-                    print!("#");
-                } else if c <= center_to_wall as u16 {
-                    print!("O");
-                } else {
-                    print!(".");
-                }
-            }
-            println!();
-        }
-        for row in distance {
-            for c in row {
-                if c == u16::MAX {
-                    print!("#");
-                } else if c > center_to_wall as u16 && c != u16::MAX {
-                    print!("O");
-                } else {
-                    print!(".");
-                }
-            }
-            println!();
-        }
+        // for row in distance {
+        //     for c in row {
+        //         if c == u16::MAX {
+        //             print!("#");
+        //         } else if c <= center_to_wall as u16 {
+        //             print!("O");
+        //         } else {
+        //             print!(".");
+        //         }
+        //     }
+        //     println!();
+        // }
+        // for row in distance {
+        //     for c in row {
+        //         if c == u16::MAX {
+        //             print!("#");
+        //         } else if c > center_to_wall as u16 && c != u16::MAX {
+        //             print!("O");
+        //         } else {
+        //             print!(".");
+        //         }
+        //     }
+        //     println!();
+        // }
+        dbg!(center_even);
+        dbg!(center_odd);
         dbg!(f_all_even);
         dbg!(all_even);
         dbg!(f_all_odd);
@@ -2128,13 +2197,24 @@ pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: u16, const MAX_STEPS2: us
         dbg!(add);
         dbg!(n + 1);
         dbg!(sub);
-        let ret = dbg!(f_all_even * all_even + f_all_odd * all_odd + n * add - (n + 1) * sub);
-        // FIXME: This is a hack...
-        // if GRID_SIZE == 131 {
-        //     ret - n
-        // } else {
-        ret
-        // }
+        let ret = dbg!(
+            f_all_even * all_even
+                + (f_all_odd - 4) * all_odd
+                + 4 * (center_odd)
+                + 2 * corners_odd
+                + n * add
+                + diff_odd * (n + 1)
+        );
+        dbg!(n);
+        fn asd(n: usize) -> usize {
+            let mut asd = 1;
+            for i in 0..n {
+                asd += 4 + i * 4;
+            }
+            asd
+        }
+        //                + missed corners   - overcounted
+        asd(n) * all_even + n * corners_even - (2 + n - 1) * (corners_even + diff_even)
     };
 
     Ok((part1, part2))
@@ -2208,7 +2288,7 @@ mod tests {
         where
             [(); 9 * N]:, // TODO: comment
             [(); 4 + 9 * (N / 2)]:,
-            Assert<{ ((4 + 9 * (N / 2)) as u16) != 0 }>: IsTrue,
+            Assert<{ (4 + 9 * (N / 2)) != 0 }>: IsTrue,
         {
             assert!(N.is_odd());
             let mut real_n = real
@@ -2221,7 +2301,7 @@ mod tests {
             real_n.replace_range(new_center..new_center + 1, "S");
             assert_eq!(
                 day21::<9, 0, { 4 + 9 * (N / 2) }>(real)?.1,
-                day21::<{ 9 * N }, { (4 + 9 * (N / 2)) as u16 }, 0>(&real_n)?.0
+                day21::<{ 9 * N }, { 4 + 9 * (N / 2) }, 0>(&real_n)?.0
             );
             Ok(())
         }
@@ -2257,7 +2337,7 @@ mod tests {
             real_n.replace_range(new_center..new_center + 1, "S");
             assert_eq!(
                 day21::<131, 0, { 65 + 131 * (N / 2) }>(real)?.1,
-                day21::<{ 131 * N }, { (65 + 131 * (N / 2)) as u16 }, 0>(&real_n)?.0
+                day21::<{ 131 * N }, { 65 + 131 * (N / 2) }, 0>(&real_n)?.0
             );
             Ok(())
         }
