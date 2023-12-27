@@ -1,3 +1,5 @@
+#![cfg_attr(test, feature(generic_const_exprs))] // Used in test for day 21
+
 pub mod solutions;
 
 use std::hash::BuildHasherDefault;
@@ -34,7 +36,7 @@ pub static ALL_SOLUTIONS: &[SolutionFn] = &[
     day18,
     day19,
     day20,
-    day21,
+    day21::<131, 64, 26501365>,
     day22,
     day23::<141>,
     day24::<200000000000000, 400000000000000>,

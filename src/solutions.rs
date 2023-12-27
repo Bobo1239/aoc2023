@@ -1923,9 +1923,104 @@ pub fn day20(input: &str) -> Result<(usize, usize)> {
     Ok((part1, part2))
 }
 
-pub fn day21(input: &str) -> Result<(usize, usize)> {
-    // TODO: Clean solution is still WIP... (see wip branch)
-    Ok((0, 0))
+pub fn day21<const GRID_SIZE: usize, const MAX_STEPS1: usize, const MAX_STEPS2: usize>(
+    input: &str,
+) -> Result<(usize, usize)> {
+    fn access<const GRID_SIZE: usize>(slice: &[u8], pos: (isize, isize)) -> u8 {
+        slice[(pos.0 * (GRID_SIZE as isize + 1) + pos.1) as usize]
+    }
+
+    fn count_reachable_from<const GRID_SIZE: usize>(
+        input: &[u8],
+        parity_even: bool,
+        starts: &[(isize, isize)],
+        max_dist: usize,
+    ) -> (usize, usize) {
+        let mut reached = [[false; GRID_SIZE]; GRID_SIZE];
+        let mut frontier = VecDeque::new();
+        let mut count_even = 0;
+        let mut count_odd = 0;
+        for start in starts {
+            frontier.push_back((*start, max_dist));
+            reached[start.0 as usize][start.1 as usize] = true;
+        }
+        while let Some((pos, remaining)) = frontier.pop_front() {
+            if (pos.0 + pos.1) % 2 == parity_even as isize {
+                count_even += 1;
+            } else {
+                count_odd += 1;
+            }
+            for delta in [(0, 1), (0, -1), (1, 0), (-1, 0)] {
+                let new_pos = (pos.0 + delta.0, pos.1 + delta.1);
+                if remaining > 0
+                    && (0..GRID_SIZE as isize).contains(&new_pos.0)
+                    && (0..GRID_SIZE as isize).contains(&new_pos.1)
+                    && !reached[new_pos.0 as usize][new_pos.1 as usize]
+                    && access::<GRID_SIZE>(input, new_pos) != b'#'
+                {
+                    reached[new_pos.0 as usize][new_pos.1 as usize] = true;
+                    frontier.push_back((new_pos, remaining - 1));
+                }
+            }
+        }
+        (count_even, count_odd)
+    }
+
+    let input = input.as_bytes();
+    let center = GRID_SIZE / 2;
+    assert_eq!(input[center * (GRID_SIZE + 1) + center], b'S');
+    let center = (center as isize, center as isize);
+
+    let part1 =
+        count_reachable_from::<GRID_SIZE>(input, MAX_STEPS1.is_odd(), &[center], MAX_STEPS1).0;
+
+    let part2 = if MAX_STEPS2 == 0 {
+        // Our algorithm only works with the real input data!
+        0
+    } else {
+        // Observations:
+        // - There's a straight path from the start to the edges in 65 steps
+        // - There's a diamond-shaped empty pit in the grid
+        // - Looking at `reachable` from part 1 confirms that we fill out a perfect diamond in 64 steps
+        // => Final filled out form is a diamond (we can always go to the center and branch out)
+        // !!!: Doesn't hold true for the corner pieces!
+        // (26501365 - 65) / 131 = 202300
+
+        // Necessary assumptions for our algorithm
+        assert!(GRID_SIZE.is_odd());
+        let center_to_wall = (GRID_SIZE - 1) / 2;
+        assert_eq!(MAX_STEPS2 % GRID_SIZE, center_to_wall);
+
+        // n = full grids to the right of center grid
+        let n = (MAX_STEPS2 - center_to_wall) / GRID_SIZE;
+        let end = GRID_SIZE as isize - 1;
+        let max_dist = (GRID_SIZE / 2) - 1;
+        // NOTE: Even/odd referes to the position of the grid (in the grid of grids); Start lies on
+        //       an even grid.
+        let parity_even = MAX_STEPS2.is_odd();
+        let (all_even, all_odd) =
+            count_reachable_from::<GRID_SIZE>(input, parity_even, &[center], usize::MAX);
+        let (center_even, center_odd) =
+            count_reachable_from::<GRID_SIZE>(input, parity_even, &[center], GRID_SIZE / 2);
+        let corners = [(0, 0), (0, end), (end, 0), (end, end)];
+        let (corners_even, corners_odd) =
+            count_reachable_from::<GRID_SIZE>(input, parity_even, &corners, max_dist);
+
+        let (f_all_even, f_all_odd) = if n.is_even() {
+            ((n + 1).pow(2), n.pow(2))
+        } else {
+            (n.pow(2), (n + 1).pow(2))
+        };
+        let (corners_missed, corners_overcounted) = if n.is_even() {
+            (corners_odd, all_even - center_even)
+        } else {
+            (corners_even, all_odd - center_odd)
+        };
+        f_all_even * all_even + f_all_odd * all_odd + n * corners_missed
+            - (2 + n - 1) * corners_overcounted
+    };
+
+    Ok((part1, part2))
 }
 
 pub fn day22(input: &str) -> Result<(usize, usize)> {
@@ -2821,6 +2916,110 @@ mod tests {
         "};
         assert_eq!(day20(example)?.0, 32000000);
         assert_eq!(execute_day(20, day20)?, (879834312, 243037165713371));
+        Ok(())
+    }
+
+    #[test]
+    fn test_day21() -> Result<()> {
+        let example = indoc! {"
+            ...........
+            .....###.#.
+            .###.##..#.
+            ..#.#...#..
+            ....#.#....
+            .##..S####.
+            .##..#...#.
+            .......##..
+            .##.#.####.
+            .##..##.##.
+            ...........
+        "};
+        // Only part 1 since part 2 doesn't work without a special input structure...
+        assert_eq!(day21::<11, 6, 0>(example)?.0, 16);
+
+        let grid1 = indoc! {"
+            ...
+            .S.
+            ...
+        "};
+        let grid2 = indoc! {"
+            .........
+            .........
+            .....#...
+            .....##..
+            ....S....
+            .........
+            .........
+            .........
+            .........
+        "};
+        let grid3 = indoc! {"
+            .........
+            .........
+            .........
+            .........
+            ....S....
+            .........
+            .#.......
+            ..#......
+            .........
+        "};
+        let grid4 = indoc! {"
+            .........
+            .#....##.
+            ...#.#...
+            ..#..###.
+            ....S....
+            ...#.#...
+            .#....##.
+            .##...##.
+            .........
+        "};
+
+        assert_eq!(day21::<3, 0, 4>(grid1)?.1, 5 * 5);
+        assert_eq!(day21::<3, 0, 7>(grid1)?.1, 8 * 8);
+        assert_eq!(day21::<3, 0, 10>(grid1)?.1, 11 * 11);
+        assert_eq!(day21::<3, 0, 7>(grid1)?.1, 8 * 8);
+        assert_eq!(day21::<3, 0, 10>(grid1)?.1, 11 * 11);
+        assert_eq!(execute_day(21, day21::<131, 64, 65>)?, (3689, 3802));
+
+        fn assert_repeated_grid<const SIZE: usize, const N: usize>(grid: &str) -> Result<()>
+        where
+            // Required by rustc so our expressions below aren't unconstrained (e.g. could overflow)
+            [(); SIZE * N]:,
+            [(); SIZE / 2 + SIZE * (N / 2)]:,
+        {
+            assert!(N.is_odd());
+            let mut grid_rep = grid
+                .lines()
+                .map(|l| l.repeat(N) + "\n")
+                .collect::<String>()
+                .repeat(N)
+                .replace('S', " ");
+            let new_center = ((SIZE * N + 1) * (SIZE * (N / 2) + SIZE / 2)) + (SIZE * N / 2);
+            grid_rep.replace_range(new_center..new_center + 1, "S");
+            assert_eq!(
+                day21::<SIZE, 0, { SIZE / 2 + SIZE * (N / 2) }>(grid)?.1,
+                day21::<{ SIZE * N }, { SIZE / 2 + SIZE * (N / 2) }, 0>(&grid_rep)?.0
+            );
+            Ok(())
+        }
+        for grid in [grid2, grid3, grid4] {
+            assert_repeated_grid::<9, 3>(grid)?;
+            assert_repeated_grid::<9, 5>(grid)?;
+            assert_repeated_grid::<9, 7>(grid)?;
+        }
+
+        let real = crate::read_day_input(21);
+        assert_repeated_grid::<131, 3>(&real)?;
+        assert_repeated_grid::<131, 5>(&real)?;
+        assert_repeated_grid::<131, 7>(&real)?;
+        assert_repeated_grid::<131, 9>(&real)?;
+
+        assert_eq!(
+            execute_day(21, day21::<131, 64, 26501365>)?,
+            (3689, 610158187362102)
+        );
         Ok(())
     }
 
